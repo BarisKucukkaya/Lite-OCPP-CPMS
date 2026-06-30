@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OCPP CPMS — Giriş</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #111111;
+      color: #f0f0f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 12px;
+      padding: 40px 36px;
+      width: 360px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .logo-brand {
+      font-size: 1.6rem;
+      font-weight: 800;
+      color: #e61e14;
+      letter-spacing: 2px;
+    }
+    .logo-sub {
+      font-size: .72rem;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      margin-top: 4px;
+    }
+
+    label {
+      display: block;
+      font-size: .78rem;
+      color: #9a9a9a;
+      margin-bottom: 6px;
+      margin-top: 18px;
+      letter-spacing: .4px;
+    }
+    label:first-of-type { margin-top: 0; }
+
+    input[type=text], input[type=password] {
+      width: 100%;
+      background: #212121;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px;
+      color: #f0f0f0;
+      font-size: .9rem;
+      padding: 10px 13px;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: #e61e14; }
+
+    .btn {
+      margin-top: 26px;
+      width: 100%;
+      padding: 12px;
+      background: #e61e14;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      letter-spacing: .3px;
+    }
+    .btn:hover { background: #b81510; }
+    .btn:disabled { background: #444; cursor: default; }
+
+    .error {
+      margin-top: 14px;
+      padding: 10px 13px;
+      background: rgba(239,68,68,.12);
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: 6px;
+      color: #ef4444;
+      font-size: .82rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-brand">VESTEL</div>
+      <div class="logo-sub">EV CPMS &middot; OCPP 1.6J</div>
+    </div>
+
+    <label for="username">Kullanıcı Adı</label>
+    <input type="text" id="username" autocomplete="username" placeholder="admin" />
+
+    <label for="password">Şifre</label>
+    <input type="password" id="password" autocomplete="current-password" placeholder="••••••••" />
+
+    <button class="btn" id="btn" onclick="doLogin()">Giriş Yap</button>
+    <div class="error" id="err"></div>
+  </div>
+
+  <script>
+    // Enter tuşuyla giriş
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    function doLogin() {
+      var username = document.getElementById('username').value.trim();
+      var password = document.getElementById('password').value;
+      var btn = document.getElementById('btn');
+      var err = document.getElementById('err');
+
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Giriş yapılıyor...';
+
+      fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username: username, password: password}),
+        credentials: 'same-origin',
+      })
+      .then(function(r) { return r.json().then(function(d) { return {status: r.status, data: d}; }); })
+      .then(function(res) {
+        if (res.status === 200 && res.data.ok) {
+          window.location.href = '/';
+        } else {
+          err.textContent = res.data.error || 'Giriş başarısız';
+          err.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Giriş Yap';
+        }
+      })
+      .catch(function() {
+        err.textContent = 'Sunucuya bağlanılamadı';
+        err.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Giriş Yap';
+      });
+    }
+  </script>
+</body>
+</html>

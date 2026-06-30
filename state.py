@@ -17,6 +17,18 @@ _sse_queues = []
 # Active WebSocket connections: {cp_id: websocket}
 ws_connections = {}
 
+# Transaction records: {int tid: {cp_id, connector_id, id_tag, meter_start, meter_stop,
+#                                  start_time, stop_time, energy_wh, reason}}
+transactions = {}
+_next_transaction_id = 1
+
+
+def next_transaction_id():
+    global _next_transaction_id
+    tid = _next_transaction_id
+    _next_transaction_id += 1
+    return tid
+
 
 def broadcast(event: dict):
     """

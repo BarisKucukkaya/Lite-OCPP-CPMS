@@ -9,6 +9,8 @@ Run with:
     python3 main.py
 """
 import asyncio
+import db
+import state
 import ocpp_server
 import http_server
 
@@ -18,6 +20,12 @@ async def main():
     print("=" * 48)
     print("   Lite OCPP 1.6J CPMS")
     print("=" * 48)
+
+    db.init()
+    loaded = db.load_transactions()
+    state.transactions.update(loaded)
+    if loaded:
+        state._next_transaction_id = max(loaded.keys()) + 1
 
     await asyncio.gather(
         ocpp_server.run_server(host="0.0.0.0", port=9000),

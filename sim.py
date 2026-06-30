@@ -6,7 +6,9 @@ Simulates a charge point that:
   2. Sends StatusNotification (Available) for connectors 0 and 1
   3. Sends Heartbeat every 20 s (matching server interval)
   4. Listens for RemoteStartTransaction / RemoteStopTransaction from server
-     and changes connector status accordingly
+     and runs the full OCPP transaction lifecycle:
+     Preparing -> Charging -> StartTransaction -> (MeterValues every 5s)
+     -> RemoteStop -> StopTransaction -> Finishing -> Available
 
 Usage:
     python3 sim.py                        # CP001, connects to localhost:9000
@@ -42,6 +44,9 @@ def _uid():
 # ---------------------------------------------------------------------------
 _pending = {}
 
+# Active charging sessions per connector: {connector_id: {"task", "meter_wh", "transaction_id"}}
+_active_sessions = {}
+
 
 async def send_call(ws, action, payload):
     uid = _uid()
@@ -75,7 +80,35 @@ async def send_status(ws, connector_id, status, error_code=None):
 
 
 # ---------------------------------------------------------------------------
-# Handle server-initiated calls (RemoteStart / RemoteStop)
+# MeterValues loop — runs while connector is Charging
+# ---------------------------------------------------------------------------
+
+async def _meter_values_loop(ws, connector_id, transaction_id):
+    """Send MeterValues every 5 s, simulating ~11 kW charging (55 Wh per 5 s tick)."""
+    session = _active_sessions.get(connector_id, {})
+    while True:
+        await asyncio.sleep(5)
+        session["meter_wh"] = session.get("meter_wh", 0) + 55
+        kwh = round(session["meter_wh"] / 1000.0, 4)
+        await send_call(ws, "MeterValues", {
+            "connectorId": connector_id,
+            "transactionId": transaction_id,
+            "meterValue": [{
+                "timestamp": _now(),
+                "sampledValue": [{
+                    "value": str(kwh),
+                    "measurand": "Energy.Active.Import.Register",
+                    "unit": "kWh",
+                    "context": "Sample.Periodic",
+                    "format": "Raw",
+                    "location": "Outlet",
+                }],
+            }],
+        })
+
+
+# ---------------------------------------------------------------------------
+# Handle server-initiated calls (RemoteStart / RemoteStop / Reset)
 # ---------------------------------------------------------------------------
 
 async def _handle_server_call(ws, uid, action, payload):
@@ -83,19 +116,69 @@ async def _handle_server_call(ws, uid, action, payload):
         connector_id = payload.get("connectorId", 1)
         await ws.send(json.dumps([3, uid, {"status": "Accepted"}]))
         print("  <-- RemoteStartTransaction (connector {}) -> Accepted".format(connector_id))
-        # Simulate the charging sequence
+
         await asyncio.sleep(1)
         await send_status(ws, connector_id, "Preparing")
         await asyncio.sleep(2)
         await send_status(ws, connector_id, "Charging")
 
+        # Send StartTransaction and get transactionId from server
+        resp = await send_call(ws, "StartTransaction", {
+            "connectorId": connector_id,
+            "idTag": "SIM001",
+            "meterStart": 0,
+            "timestamp": _now(),
+        })
+
+        transaction_id = None
+        if resp and resp[0] == 3:
+            transaction_id = resp[2].get("transactionId")
+
+        # Start MeterValues background task
+        _active_sessions[connector_id] = {"meter_wh": 0, "transaction_id": transaction_id, "task": None}
+        task = asyncio.ensure_future(_meter_values_loop(ws, connector_id, transaction_id))
+        _active_sessions[connector_id]["task"] = task
+
     elif action == "RemoteStopTransaction":
         await ws.send(json.dumps([3, uid, {"status": "Accepted"}]))
         print("  <-- RemoteStopTransaction -> Accepted")
+
+        # Find which connector is active
+        connector_id = 1
+        if len(_active_sessions) == 1:
+            connector_id = next(iter(_active_sessions))
+
+        session = _active_sessions.pop(connector_id, {})
+
+        # Cancel MeterValues loop
+        task = session.get("task")
+        if task and not task.done():
+            task.cancel()
+
+        final_meter_wh = session.get("meter_wh", 0)
+        transaction_id = session.get("transaction_id")
+
         await asyncio.sleep(1)
-        await send_status(ws, 1, "Finishing")
+        await send_status(ws, connector_id, "Finishing")
+
+        if transaction_id is not None:
+            await send_call(ws, "StopTransaction", {
+                "transactionId": transaction_id,
+                "meterStop": final_meter_wh,
+                "timestamp": _now(),
+                "reason": "Remote",
+            })
+
         await asyncio.sleep(2)
-        await send_status(ws, 1, "Available")
+        await send_status(ws, connector_id, "Available")
+
+    elif action == "Reset":
+        reset_type = payload.get("type", "Hard")
+        await ws.send(json.dumps([3, uid, {"status": "Accepted"}]))
+        print("  <-- Reset ({}) -> Accepted (sim reconnects in 3s)".format(reset_type))
+        # Simulate a reboot by closing the websocket — simulate() will reconnect
+        await asyncio.sleep(3)
+        await ws.close()
 
     else:
         await ws.send(json.dumps([4, uid, "NotImplemented",
@@ -152,27 +235,32 @@ async def simulate():
     async with websockets.connect(URL, subprotocols=["ocpp1.6"]) as ws:
         print("[SIM] Connected. Subprotocol: {}\n".format(ws.subprotocol))
 
-        # Start receiver first so send_call futures can be resolved
         recv_task = asyncio.ensure_future(_receiver(ws))
 
-        # Boot sequence
-        await send_call(ws, "BootNotification", {
-            "chargePointVendor": "Vestel",
-            "chargePointModel": "VE7000",
-            "chargePointSerialNumber": "SN-{}".format(CP_ID),
-            "chargeBoxSerialNumber": "CB-{}".format(CP_ID),
-            "firmwareVersion": "1.2.0",
-            "meterType": "AC",
-        })
+        try:
+            await send_call(ws, "BootNotification", {
+                "chargePointVendor": "Vestel",
+                "chargePointModel": "VE7000",
+                "chargePointSerialNumber": "SN-{}".format(CP_ID),
+                "chargeBoxSerialNumber": "CB-{}".format(CP_ID),
+                "firmwareVersion": "1.2.0",
+                "meterType": "AC",
+            })
 
-        await send_status(ws, 0, "Available")
-        await send_status(ws, 1, "Available")
+            await send_status(ws, 0, "Available")
+            await send_status(ws, 1, "Available")
 
-        print("\n[SIM] Running (Ctrl+C to stop). Heartbeat every {}s.\n".format(HEARTBEAT_INTERVAL))
+            print("\n[SIM] Running (Ctrl+C to stop). Heartbeat every {}s.\n".format(HEARTBEAT_INTERVAL))
 
-        # Heartbeat runs alongside receiver
-        await _heartbeat_loop(ws)
-        recv_task.cancel()
+            await _heartbeat_loop(ws)
+        finally:
+            recv_task.cancel()
+            # Cancel any active MeterValues tasks on disconnect
+            for session in list(_active_sessions.values()):
+                task = session.get("task")
+                if task and not task.done():
+                    task.cancel()
+            _active_sessions.clear()
 
 
 if __name__ == "__main__":

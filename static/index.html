@@ -3,493 +3,1270 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OCPP CPMS Dashboard</title>
+  <title>OCPP CPMS</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <style>
+    :root {
+      --bg:       #111111;   /* siyah panel */
+      --sidebar:  #0a0a0a;   /* daha koyu siyah */
+      --card:     #1a1a1a;   /* kart yüzeyi */
+      --card2:    #212121;
+      --border:   rgba(255,255,255,.07);
+      --accent:   #e61e14;   /* Vestel kırmızı */
+      --accent-d: #b81510;   /* koyu kırmızı */
+      --blue:     #38b6ff;   /* şarj LED halkası mavisi */
+      --green:    #22c55e;
+      --yellow:   #f59e0b;
+      --red:      #ef4444;
+      --orange:   #f97316;
+      --purple:   #a78bfa;
+      --t1:       #f0f0f0;
+      --t2:       #9a9a9a;
+      --t3:       #555555;
+    }
+
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #f0f2f5;
-      color: #111827;
+      background: var(--bg);
+      color: var(--t1);
       height: 100vh;
       display: flex;
-      flex-direction: column;
       overflow: hidden;
     }
 
-    /* ── Header ──────────────────────────────────────────────── */
-    header {
-      background: #1e293b;
-      color: #f8fafc;
-      padding: 10px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
-    }
-    header h1 { font-size: 1rem; font-weight: 600; letter-spacing: .5px; }
-    header .subtitle { font-size: .72rem; color: #94a3b8; margin-top: 2px; }
-
-    #conn-pill {
-      font-size: .75rem;
-      font-weight: 600;
-      padding: 4px 12px;
-      border-radius: 20px;
-      background: #334155;
-      color: #94a3b8;
-      transition: background .3s, color .3s;
-    }
-    #conn-pill.connected  { background: #166534; color: #bbf7d0; }
-    #conn-pill.error      { background: #991b1b; color: #fecaca; }
-
-    /* ── Main layout ─────────────────────────────────────────── */
-    .main {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-    }
-
-    /* ── Left: Stations ──────────────────────────────────────── */
-    #stations-panel {
-      width: 320px;
-      min-width: 260px;
-      flex-shrink: 0;
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    #sidebar {
+      width: 210px;
+      min-width: 210px;
+      background: var(--sidebar);
       display: flex;
       flex-direction: column;
-      border-right: 1px solid #d1d5db;
+      border-right: 1px solid var(--border);
     }
 
-    .panel-hdr {
-      padding: 10px 14px;
-      background: #fff;
-      border-bottom: 1px solid #e5e7eb;
-      font-size: .8rem;
+    .sidebar-logo {
+      padding: 22px 18px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-title {
+      font-size: 1rem;
       font-weight: 700;
-      color: #374151;
+      color: var(--t1);
+      letter-spacing: .5px;
+    }
+    .logo-sub {
+      font-size: .68rem;
+      color: var(--t3);
+      margin-top: 3px;
       text-transform: uppercase;
-      letter-spacing: .6px;
+      letter-spacing: .8px;
+    }
+
+    .sidebar-section {
+      padding: 16px 10px 8px;
+      font-size: .62rem;
+      color: var(--t3);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    nav { flex: 1; padding: 0 8px; }
+
+    .nav-item {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--t2);
+      font-size: .82rem;
+      font-weight: 500;
+      transition: background .15s, color .15s;
+      margin-bottom: 2px;
+      user-select: none;
     }
-    .panel-hdr span.count {
-      background: #e0e7ff;
-      color: #3730a3;
-      font-size: .7rem;
+    .nav-item:hover { background: rgba(255,255,255,.04); color: var(--t1); }
+    .nav-item.active { background: rgba(230,30,20,.12); color: var(--accent); }
+    .nav-icon { font-size: 1rem; flex-shrink: 0; }
+    .nav-badge {
+      margin-left: auto;
+      background: rgba(230,30,20,.18);
+      color: var(--accent);
+      font-size: .65rem;
+      font-weight: 700;
       padding: 1px 7px;
       border-radius: 10px;
     }
+    .nav-badge.green { background: rgba(34,197,94,.18); color: var(--green); }
 
-    #stations-scroll {
-      overflow-y: auto;
-      flex: 1;
-      padding: 12px;
+    .sidebar-footer {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
     }
-
-    .empty-hint {
-      color: #9ca3af;
-      text-align: center;
-      padding: 40px 20px;
-      font-size: .85rem;
-    }
-
-    /* ── Station card ────────────────────────────────────────── */
-    .s-card {
-      background: #fff;
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-bottom: 10px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.07);
-      border-left: 4px solid #9ca3af;
-      transition: border-color .3s;
-    }
-    .s-card.online  { border-left-color: #16a34a; }
-    .s-card.faulted { border-left-color: #dc2626; }
-
-    .s-card-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-    .s-cp-id {
-      font-family: monospace;
-      font-weight: 700;
-      font-size: .95rem;
-    }
-    .s-status-pill {
-      font-size: .65rem;
-      font-weight: 700;
-      padding: 2px 8px;
-      border-radius: 10px;
-      text-transform: uppercase;
-    }
-    .pill-online  { background: #dcfce7; color: #15803d; }
-    .pill-offline { background: #f3f4f6; color: #6b7280; }
-
-    .s-meta {
-      font-size: .78rem;
-      color: #6b7280;
-      margin-bottom: 8px;
-    }
-
-    .connectors { display: flex; flex-wrap: wrap; gap: 5px; }
-    .c-badge {
+    #conn-pill {
       font-size: .73rem;
-      padding: 3px 9px;
-      border-radius: 4px;
-      color: #fff;
-      font-weight: 500;
-    }
-    .cs-Available     { background: #16a34a; }
-    .cs-Charging      { background: #2563eb; }
-    .cs-Preparing     { background: #d97706; }
-    .cs-Finishing     { background: #d97706; }
-    .cs-Faulted       { background: #dc2626; }
-    .cs-Unavailable   { background: #6b7280; }
-    .cs-SuspendedEVSE { background: #ea580c; }
-    .cs-SuspendedEV   { background: #ea580c; }
-    .cs-Reserved      { background: #7c3aed; }
-    .cs-Unknown       { background: #9ca3af; }
-
-    .s-hb { font-size: .72rem; color: #9ca3af; margin-top: 8px; }
-    .s-hb.stale { color: #dc2626; }
-
-    .s-actions { display: flex; gap: 6px; margin-top: 10px; }
-    .btn-start {
-      flex: 1;
-      padding: 5px 0;
-      font-size: .75rem;
       font-weight: 600;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      background: #16a34a;
-      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      background: rgba(255,255,255,.04);
+      color: var(--t3);
+      transition: all .3s;
+      text-align: center;
     }
-    .btn-start:hover { background: #15803d; }
-    .btn-stop {
-      flex: 1;
-      padding: 5px 0;
-      font-size: .75rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      background: #dc2626;
-      color: #fff;
-    }
-    .btn-stop:hover { background: #b91c1c; }
-    .btn-start:disabled, .btn-stop:disabled {
-      opacity: .45;
-      cursor: not-allowed;
-    }
+    #conn-pill.connected { background: rgba(16,185,129,.15); color: var(--green); }
+    #conn-pill.error     { background: rgba(239,68,68,.15); color: var(--red); }
 
-    /* ── Right: Logs ─────────────────────────────────────────── */
-    #logs-panel {
+    /* ── Main ────────────────────────────────────────────────── */
+    #main {
       flex: 1;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
 
-    #log-scroll {
-      flex: 1;
-      overflow-y: auto;
+    /* ── Topbar ──────────────────────────────────────────────── */
+    #topbar {
+      height: 56px;
+      background: var(--sidebar);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      flex-shrink: 0;
     }
+    #page-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--t1);
+      letter-spacing: .3px;
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+    .topbar-stat {
+      font-size: .78rem;
+      color: var(--t2);
+    }
+    .topbar-stat strong { color: var(--t1); font-weight: 700; }
+
+    /* ── Content ─────────────────────────────────────────────── */
+    #content { flex: 1; overflow-y: auto; padding: 24px; }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── Stat cards row ──────────────────────────────────────── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 20px 22px;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      transition: border-color .2s;
+    }
+    .stat-card:hover { border-color: var(--card-accent, var(--accent)); }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--card-accent, var(--accent));
+      border-radius: 12px 12px 0 0;
+    }
+    .stat-card.s-online   { --card-accent: var(--accent); }   /* Vestel kırmızı */
+    .stat-card.s-charging { --card-accent: var(--blue); }    /* LED mavisi */
+    .stat-card.s-txn      { --card-accent: var(--purple); }
+    .stat-card.s-energy   { --card-accent: var(--green); }
+
+    .stat-lbl {
+      font-size: .7rem;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      color: var(--t3);
+      margin-bottom: 10px;
+    }
+    .stat-val {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--t1);
+    }
+    .stat-card.s-online   .stat-val { color: var(--accent); }
+    .stat-card.s-charging .stat-val { color: var(--blue); }
+    .stat-card.s-txn      .stat-val { color: var(--purple); }
+    .stat-card.s-energy   .stat-val { color: var(--green); }
+    .stat-unit {
+      font-size: .8rem;
+      color: var(--t3);
+      margin-top: 4px;
+    }
+
+    /* ── Chart row ───────────────────────────────────────────── */
+    .chart-row {
+      display: grid;
+      grid-template-columns: 3fr 2fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .chart-card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 20px 22px;
+    }
+    .chart-card h3 {
+      font-size: .75rem;
+      font-weight: 700;
+      color: var(--t2);
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      margin-bottom: 16px;
+    }
+    .chart-wrap { position: relative; height: 200px; }
+
+    /* ── Generic card ────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .card-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: .78rem;
+      font-weight: 700;
+      color: var(--t2);
+      text-transform: uppercase;
+      letter-spacing: .7px;
+    }
+    .card-hdr-right { display: flex; align-items: center; gap: 10px; }
+    .card-scroll { overflow-y: auto; max-height: calc(100vh - 220px); }
+    .logs-scroll { overflow-y: auto; max-height: calc(100vh - 200px); }
+
+    /* ── Data table ──────────────────────────────────────────── */
+    .data-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    .data-table thead th {
+      position: sticky; top: 0;
+      background: var(--card);
+      padding: 10px 16px;
+      text-align: left;
+      font-size: .68rem; font-weight: 700;
+      color: var(--t3);
+      text-transform: uppercase; letter-spacing: .6px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table tbody td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,.03);
+      color: var(--t2);
+      vertical-align: middle;
+    }
+    .data-table tbody tr:hover td { background: rgba(255,255,255,.02); }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+
+    .td-mono  { font-family: monospace; font-size: .75rem; }
+    .td-bold  { font-weight: 700; color: var(--t1); }
+    .td-green { font-weight: 700; color: var(--green); }
+    .td-blue  { font-weight: 700; color: var(--blue); }
+    .td-muted { color: var(--t3); font-size: .75rem; }
+    .td-dir-IN  { color: var(--blue);   font-weight: 700; }
+    .td-dir-OUT { color: var(--green);  font-weight: 700; }
+    .td-dir-SYS { color: var(--t3);    font-weight: 700; }
+    .td-pay {
+      font-family: monospace; font-size: .71rem; color: var(--t3);
+      max-width: 280px; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; cursor: pointer;
+    }
+    .td-pay.expanded { white-space: pre-wrap; word-break: break-all; }
+
+    .empty-row td {
+      text-align: center;
+      color: var(--t3);
+      padding: 40px;
+      font-style: italic;
+    }
+
+    /* ── CP Grid ─────────────────────────────────────────────── */
+    .cp-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 16px;
+    }
+
+    .cp-card {
+      background: var(--card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--t3);
+      padding: 18px 20px;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .cp-card:hover { box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+    .cp-card.online  { border-left-color: var(--green); }
+    .cp-card.charging { border-left-color: var(--accent); }
+    .cp-card.faulted { border-left-color: var(--red); }
+
+    .cp-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; margin-bottom: 12px;
+    }
+    .cp-id { font-family: monospace; font-size: 1rem; font-weight: 700; color: var(--t1); }
+    .cp-meta { font-size: .73rem; color: var(--t3); margin-top: 2px; }
+
+    .cp-status-pill {
+      font-size: .62rem; font-weight: 700;
+      padding: 3px 9px; border-radius: 20px;
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+    .pill-online  { background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+    .pill-offline { background: rgba(255,255,255,.05); color: var(--t3); border: 1px solid var(--border); }
+
+    .cp-connectors { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .c-badge {
+      font-size: .7rem; padding: 3px 10px; border-radius: 20px;
+      font-weight: 600; border: 1px solid transparent;
+    }
+    .cs-Available     { background: rgba(16,185,129,.12); color: var(--green);  border-color: rgba(16,185,129,.25); }
+    .cs-Charging      { background: rgba(56,182,255,.12); color: var(--blue); border-color: rgba(56,182,255,.3);
+                        animation: chargePulse 1.8s ease-in-out infinite; }
+    .cs-Preparing     { background: rgba(245,158,11,.12); color: var(--yellow); border-color: rgba(245,158,11,.25); }
+    .cs-Finishing     { background: rgba(245,158,11,.12); color: var(--yellow); border-color: rgba(245,158,11,.25); }
+    .cs-Faulted       { background: rgba(239,68,68,.12);  color: var(--red);    border-color: rgba(239,68,68,.25); }
+    .cs-Unavailable   { background: rgba(255,255,255,.05); color: var(--t3);    border-color: var(--border); }
+    .cs-SuspendedEVSE { background: rgba(249,115,22,.12); color: var(--orange); border-color: rgba(249,115,22,.25); }
+    .cs-SuspendedEV   { background: rgba(249,115,22,.12); color: var(--orange); border-color: rgba(249,115,22,.25); }
+    .cs-Reserved      { background: rgba(167,139,250,.12);color: var(--purple); border-color: rgba(167,139,250,.25); }
+    .cs-Unknown       { background: rgba(255,255,255,.04); color: var(--t3);    border-color: var(--border); }
+
+    @keyframes chargePulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: .55; }
+    }
+
+    .cp-txn-row {
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(56,182,255,.06); border: 1px solid rgba(56,182,255,.18);
+      border-radius: 8px; padding: 8px 12px; margin-bottom: 12px;
+      font-size: .75rem;
+    }
+    .cp-txn-id  { color: var(--blue);  font-weight: 700; }
+    .cp-txn-kwh { color: var(--green); font-weight: 700; }
+    .cp-txn-dur { color: var(--t3); margin-left: auto; font-family: monospace; font-size: .72rem; }
+
+    .cp-hb { font-size: .7rem; color: var(--t3); margin-bottom: 12px; }
+    .cp-hb.stale { color: var(--red); }
+
+    .cp-actions { display: flex; gap: 6px; }
+    .btn {
+      flex: 1; padding: 7px 0; font-size: .73rem; font-weight: 600;
+      border: none; border-radius: 6px; cursor: pointer; transition: all .15s;
+    }
+    .btn-start { background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.3); }
+    .btn-start:hover:not(:disabled) { background: var(--green); color: #fff; }
+    .btn-stop  { background: rgba(239,68,68,.12);  color: var(--red);   border: 1px solid rgba(239,68,68,.25); }
+    .btn-stop:hover:not(:disabled)  { background: var(--red);   color: #fff; }
+    .btn-reset { background: rgba(249,115,22,.12); color: var(--orange); border: 1px solid rgba(249,115,22,.25); }
+    .btn-reset:hover:not(:disabled) { background: var(--orange); color: #fff; }
+    .btn-log   { background: rgba(255,255,255,.05); color: var(--t2);   border: 1px solid var(--border); flex: 0; padding: 7px 10px; }
+    .btn-log:hover { background: rgba(255,255,255,.09); color: var(--t1); }
+    .btn:disabled { opacity: .3; cursor: not-allowed; }
+
+    .cp-empty {
+      grid-column: 1 / -1; text-align: center;
+      color: var(--t3); padding: 60px 20px; font-size: .9rem;
+    }
+
+    /* ── Log filter ──────────────────────────────────────────── */
+    #log-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+    .filter-chip {
+      padding: 3px 11px; border: 1px solid var(--border); border-radius: 20px;
+      font-size: .7rem; font-weight: 600; cursor: pointer;
+      background: transparent; color: var(--t3); transition: all .15s;
+    }
+    .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-chip.active { background: rgba(230,30,20,.15); border-color: rgba(230,30,20,.4); color: var(--accent); }
 
     .clear-btn {
-      font-size: .72rem;
-      padding: 3px 10px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      cursor: pointer;
-      background: #fff;
-      color: #6b7280;
+      padding: 4px 12px; font-size: .72rem;
+      border: 1px solid var(--border); border-radius: 6px;
+      cursor: pointer; background: transparent; color: var(--t3);
     }
-    .clear-btn:hover { background: #f9fafb; }
+    .clear-btn:hover { background: rgba(255,255,255,.05); color: var(--t1); }
 
-    #log-table {
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
+
+    /* ── Toast bildirimleri ──────────────────────────────────── */
+    #toast-container {
+      position: fixed; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column-reverse; gap: 8px;
+      z-index: 9999; pointer-events: none;
+    }
+    .toast {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      padding: 11px 15px;
+      border-radius: 8px;
+      font-size: .82rem;
+      color: var(--t1);
+      max-width: 300px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.45);
+      animation: toast-in .25s ease, toast-out .4s ease 4.6s forwards;
+      pointer-events: all;
+    }
+    @keyframes toast-in  { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: none; } }
+    @keyframes toast-out { to   { opacity:0; transform: translateX(20px); } }
+
+    /* ── Çıkış butonu ────────────────────────────────────────── */
+    .btn-logout {
+      margin-top: 8px;
       width: 100%;
-      border-collapse: collapse;
-      font-size: .8rem;
-    }
-    #log-table thead th {
-      position: sticky;
-      top: 0;
-      background: #fff;
-      padding: 8px 10px;
-      text-align: left;
-      font-size: .72rem;
-      font-weight: 700;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      border-bottom: 2px solid #e5e7eb;
-      z-index: 1;
-    }
-    #log-table tbody td {
-      padding: 5px 10px;
-      border-bottom: 1px solid #f3f4f6;
-      vertical-align: top;
-    }
-    #log-table tbody tr:hover td { background: #f9fafb; }
-
-    .ts-cell   { font-family: monospace; color: #9ca3af; white-space: nowrap; font-size: .75rem; }
-    .cp-cell   { font-family: monospace; font-weight: 700; white-space: nowrap; }
-    .dir-cell  { font-weight: 700; font-size: .8rem; }
-    .dir-IN    { color: #1d4ed8; }
-    .dir-OUT   { color: #15803d; }
-    .dir-SYS   { color: #9ca3af; }
-    .act-cell  { font-weight: 500; }
-
-    .pay-cell {
-      color: #6b7280;
-      font-family: monospace;
-      font-size: .73rem;
-      max-width: 260px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      padding: 7px 0;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--t3);
+      font-size: .75rem;
       cursor: pointer;
+      transition: all .15s;
+      text-align: center;
     }
-    .pay-cell.expanded {
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
+    .btn-logout:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Giriş logu tablosu ──────────────────────────────────── */
+    .badge-ok   { color: var(--green);  font-weight: 700; }
+    .badge-fail { color: var(--red);    font-weight: 700; }
   </style>
 </head>
 <body>
 
-  <header>
-    <div>
-      <h1>OCPP CPMS Dashboard</h1>
-      <div class="subtitle">OCPP 1.6J &bull; Lite</div>
-    </div>
-    <div id="conn-pill">● Bağlanıyor...</div>
-  </header>
+  <!-- ── Toast container ───────────────────────────────────────── -->
+  <div id="toast-container"></div>
 
-  <div class="main">
-
-    <!-- Left: Station list -->
-    <div id="stations-panel">
-      <div class="panel-hdr">
-        İstasyonlar
-        <span class="count" id="station-count">0</span>
-      </div>
-      <div id="stations-scroll">
-        <p class="empty-hint" id="empty-hint">Henüz bağlı istasyon yok.</p>
-      </div>
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-title" style="color:var(--accent);letter-spacing:.5px;">VESTEL</div>
+      <div class="logo-sub">EV CPMS · OCPP 1.6J</div>
     </div>
 
-    <!-- Right: Message log -->
-    <div id="logs-panel">
-      <div class="panel-hdr">
-        Mesaj Logları
-        <button class="clear-btn" onclick="clearLogs()">Temizle</button>
+    <div class="sidebar-section">Ana Menü</div>
+    <nav>
+      <div class="nav-item active" data-page="overview" onclick="showPage('overview')">
+        <span class="nav-icon">▣</span> Genel Bakış
       </div>
-      <div id="log-scroll">
-        <table id="log-table">
-          <thead>
-            <tr>
-              <th>Zaman</th>
-              <th>CP ID</th>
-              <th>Yön</th>
-              <th>Mesaj</th>
-              <th>Payload</th>
-            </tr>
-          </thead>
-          <tbody id="log-body"></tbody>
-        </table>
+      <div class="nav-item" data-page="stations" onclick="showPage('stations')">
+        <span class="nav-icon">⚡</span> İstasyonlar
+        <span class="nav-badge green" id="nav-station-count">0</span>
       </div>
-    </div>
+      <div class="nav-item" data-page="txns" onclick="showPage('txns')">
+        <span class="nav-icon">📄</span> İşlemler
+        <span class="nav-badge" id="nav-txn-count">0</span>
+      </div>
+      <div class="nav-item" data-page="logs" onclick="showPage('logs')">
+        <span class="nav-icon">📨</span> Mesaj Logu
+      </div>
+      <div class="nav-item nav-admin-only" data-page="loginlog" onclick="showPage('loginlog')">
+        <span class="nav-icon">🛡</span> Giriş Logları
+      </div>
+      <div class="nav-item nav-admin-only" data-page="users" onclick="showPage('users')">
+        <span class="nav-icon">👥</span> Kullanıcılar
+      </div>
+    </nav>
 
+    <div class="sidebar-footer">
+      <div id="conn-pill">● Bağlanıyor...</div>
+      <button class="btn-logout" onclick="doLogout()">↩ Çıkış Yap</button>
+    </div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────────────── -->
+  <div id="main">
+    <header id="topbar">
+      <div id="page-title">Genel Bakış</div>
+      <div class="topbar-right">
+        <div class="topbar-stat"><strong id="tb-online">0</strong> İstasyon</div>
+        <div class="topbar-stat"><strong id="tb-charging">0</strong> Şarj Ediyor</div>
+        <div class="topbar-stat"><strong id="tb-kwh">0.0</strong> kWh Toplam</div>
+      </div>
+    </header>
+
+    <main id="content">
+
+      <!-- ── Genel Bakış ─────────────────────────────────────── -->
+      <section class="page active" id="page-overview">
+        <div class="stat-row">
+          <div class="stat-card s-online">
+            <div class="stat-lbl">Aktif İstasyon</div>
+            <div class="stat-val" id="stat-online">0</div>
+          </div>
+          <div class="stat-card s-charging">
+            <div class="stat-lbl">Şarj Ediyor</div>
+            <div class="stat-val" id="stat-charging">0</div>
+          </div>
+          <div class="stat-card s-txn">
+            <div class="stat-lbl">Toplam İşlem</div>
+            <div class="stat-val" id="stat-txns">0</div>
+          </div>
+          <div class="stat-card s-energy">
+            <div class="stat-lbl">Toplam Enerji</div>
+            <div class="stat-val" id="stat-energy">0.0</div>
+            <div class="stat-unit">kWh</div>
+          </div>
+        </div>
+
+        <div class="chart-row">
+          <div class="chart-card">
+            <h3>Canlı Enerji Akışı (kWh)</h3>
+            <div class="chart-wrap"><canvas id="chart-line"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>Konektör Durum Dağılımı</h3>
+            <div class="chart-wrap"><canvas id="chart-donut"></canvas></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hdr">Son İşlemler</div>
+          <div class="card-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>CP</th><th>#</th><th>Bitiş</th><th>Enerji</th><th>Sebep</th></tr>
+              </thead>
+              <tbody id="ov-txn-body">
+                <tr class="empty-row"><td colspan="5">Henüz tamamlanmış işlem yok</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── İstasyonlar ─────────────────────────────────────── -->
+      <section class="page" id="page-stations">
+        <div class="cp-grid" id="cp-grid">
+          <div class="cp-empty" id="cp-empty">Bağlı istasyon beklenıyor…</div>
+        </div>
+      </section>
+
+      <!-- ── İşlemler ────────────────────────────────────────── -->
+      <section class="page" id="page-txns">
+        <div class="card">
+          <div class="card-hdr">İşlem Geçmişi</div>
+          <div class="card-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>CP</th><th>#</th><th>Başlangıç</th><th>Bitiş</th><th>Enerji</th><th>Sebep</th></tr>
+              </thead>
+              <tbody id="txn-body">
+                <tr class="empty-row"><td colspan="6">Henüz tamamlanmış işlem yok</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Mesaj Logu ───────────────────────────────────────── -->
+      <section class="page" id="page-logs">
+        <div class="card">
+          <div class="card-hdr">
+            Mesaj Logu
+            <div class="card-hdr-right">
+              <div id="log-filter-bar">
+                <button class="filter-chip active" data-cp="__all__" onclick="setLogFilter(null)">Tümü</button>
+              </div>
+              <button class="clear-btn" onclick="clearLogs()">Temizle</button>
+            </div>
+          </div>
+          <div class="logs-scroll">
+            <table class="data-table" id="log-table">
+              <thead>
+                <tr><th>Zaman</th><th>CP</th><th>Yön</th><th>Mesaj</th><th>Payload</th></tr>
+              </thead>
+              <tbody id="log-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Giriş Logları ──────────────────────────────────────── -->
+      <section class="page" id="page-loginlog">
+        <div class="card">
+          <div class="card-hdr">
+            Giriş Logları
+            <div class="card-hdr-right">
+              <button class="clear-btn" onclick="showLoginLog()">↺ Yenile</button>
+            </div>
+          </div>
+          <div class="card-scroll">
+            <table class="data-table">
+              <thead>
+                <tr><th>Tarih / Saat</th><th>Kullanıcı</th><th>IP Adresi</th><th>Durum</th></tr>
+              </thead>
+              <tbody id="loginlog-body">
+                <tr class="empty-row"><td colspan="4">Henüz giriş kaydı yok</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Kullanıcı Yönetimi ─────────────────────────────────── -->
+      <section class="page" id="page-users">
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-hdr">Yeni Kullanıcı Ekle</div>
+          <div style="padding:18px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.73rem;color:var(--t3);margin-bottom:5px;">Kullanıcı Adı</div>
+              <input id="new-uname" type="text" placeholder="kullanici" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.85rem;padding:8px 12px;outline:none;width:180px;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+            </div>
+            <div>
+              <div style="font-size:.73rem;color:var(--t3);margin-bottom:5px;">Şifre</div>
+              <input id="new-upass" type="password" placeholder="••••••" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.85rem;padding:8px 12px;outline:none;width:180px;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+            </div>
+            <button onclick="addUser()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer;">Ekle</button>
+            <div id="user-msg" style="font-size:.78rem;color:var(--red);align-self:center;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            Kullanıcı Listesi
+            <div class="card-hdr-right">
+              <button class="clear-btn" onclick="showUsers()">↺ Yenile</button>
+            </div>
+          </div>
+          <div class="card-scroll">
+            <table class="data-table">
+              <thead><tr><th>Kullanıcı Adı</th><th>Eklenme Tarihi</th><th>Rol</th><th></th></tr></thead>
+              <tbody id="users-body">
+                <tr class="empty-row"><td colspan="4">Henüz normal kullanıcı yok</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+    </main>
   </div>
 
   <script>
-    // ── Helpers ──────────────────────────────────────────────────
-    function esc(str) {
-      return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+    // ── Constants ─────────────────────────────────────────────
+    var MAX_LOG_ROWS = 300;
+    var MAX_CP_LOGS  = 200;
+    var CHART_COLORS = ['#e61e14','#38b6ff','#22c55e','#f59e0b','#a78bfa','#f97316'];
+    var PAGE_TITLES  = { overview: 'Genel Bakış', stations: 'İstasyonlar', txns: 'İşlemler', logs: 'Mesaj Logu', loginlog: 'Giriş Logları', users: 'Kullanıcı Yönetimi' };
+
+    // ── State ─────────────────────────────────────────────────
+    var onlineCount    = 0;
+    var txnCount       = 0;
+    var _totalEnergyWh = 0;
+    var _activeTxnSet  = {};
+    var _cpC1Status    = {};
+    var _cpLogs        = {};
+    var _allLogs       = [];
+    var _logFilter     = null;
+    var _durationTimers= {};
+    var _activePage    = 'overview';
+    var _cpColors      = {};
+    var _colorIdx      = 0;
+    var _lineChart     = null;
+    var _donutChart    = null;
+    var _barChart      = null;
+    var _liveData      = {};
+    var _barLabels     = [];
+    var _barDataArr    = [];
+    var _chartsInit    = false;
+    var _knownCps      = {};   // {cp_id: true} — bağlantı toast kontrolü
+    var _myRole        = 'user';  // /api/me'den gelir
+
+    // ── Toast bildirimleri ────────────────────────────────────
+    function showToast(msg, color) {
+      var el = document.createElement('div');
+      el.className = 'toast';
+      el.style.borderLeftColor = color || 'var(--accent)';
+      el.textContent = msg;
+      document.getElementById('toast-container').appendChild(el);
+      setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 5100);
     }
 
+    // ── Logout ────────────────────────────────────────────────
+    function doLogout() {
+      fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
+        .finally(function() { window.location.href = '/login'; });
+    }
+
+    // ── Rol yönetimi ──────────────────────────────────────────
+    function _applyRoleUI() {
+      var adminItems = document.querySelectorAll('.nav-admin-only');
+      adminItems.forEach(function(el) {
+        el.style.display = _myRole === 'admin' ? '' : 'none';
+      });
+    }
+
+    // ── Kullanıcı yönetimi ────────────────────────────────────
+    function showUsers() {
+      fetch('/api/users', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(rows) {
+          var tbody = document.getElementById('users-body');
+          tbody.innerHTML = '';
+          if (!rows.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Henüz normal kullanıcı yok</td></tr>';
+            return;
+          }
+          rows.forEach(function(row) {
+            var tr = document.createElement('tr');
+            var ce = esc(row.username);
+            tr.innerHTML =
+              '<td class="td-bold">'          + ce                                                         + '</td>' +
+              '<td class="td-mono td-muted">' + esc(row.created_at || '—')                                + '</td>' +
+              '<td class="td-muted">Kullanıcı</td>' +
+              '<td><button onclick="deleteUser(\'' + ce + '\')" style="padding:3px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:5px;font-size:.72rem;cursor:pointer;">Sil</button></td>';
+            tbody.appendChild(tr);
+          });
+        })
+        .catch(function() {});
+    }
+
+    function addUser() {
+      var uname = document.getElementById('new-uname').value.trim();
+      var upass = document.getElementById('new-upass').value;
+      var msg   = document.getElementById('user-msg');
+      msg.style.color = 'var(--red)';
+      if (!uname || !upass) { msg.textContent = 'Kullanıcı adı ve şifre boş olamaz'; return; }
+      msg.textContent = '';
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ username: uname, password: upass }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.ok) {
+          document.getElementById('new-uname').value = '';
+          document.getElementById('new-upass').value = '';
+          msg.style.color = 'var(--green)';
+          msg.textContent = uname + ' eklendi';
+          showUsers();
+          setTimeout(function() { msg.textContent = ''; }, 3000);
+        } else {
+          msg.textContent = d.error || 'Hata';
+        }
+      })
+      .catch(function() { msg.textContent = 'Bağlantı hatası'; });
+    }
+
+    function deleteUser(username) {
+      if (!confirm(username + ' kullanıcısı silinsin mi?')) return;
+      fetch('/api/users', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ username: username }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function() { showUsers(); })
+      .catch(function() {});
+    }
+
+    // ── Giriş logları ─────────────────────────────────────────
+    function showLoginLog() {
+      fetch('/api/login-log', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(rows) {
+          var tbody = document.getElementById('loginlog-body');
+          tbody.innerHTML = '';
+          if (!rows.length) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Henüz giriş kaydı yok</td></tr>';
+            return;
+          }
+          rows.forEach(function(row) {
+            var tr = document.createElement('tr');
+            var ok = row.success === 1 || row.success === true;
+            tr.innerHTML =
+              '<td class="td-mono td-muted">' + esc(row.login_time || '') + '</td>' +
+              '<td class="td-bold">'           + esc(row.username || '') + '</td>' +
+              '<td class="td-mono td-muted">'  + esc(row.ip || '') + '</td>' +
+              '<td class="' + (ok ? 'badge-ok' : 'badge-fail') + '">' + (ok ? '✓ Başarılı' : '✗ Hatalı') + '</td>';
+            tbody.appendChild(tr);
+          });
+        })
+        .catch(function() {});
+    }
+
+    // ── Helpers ───────────────────────────────────────────────
+    function esc(s) {
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
     function fmtTs(iso) {
-      if (!iso) return '';
-      // "2026-06-29T10:23:45.123Z" -> "10:23:45.123"
-      var t = iso.replace('Z', '').split('T');
-      return t.length > 1 ? t[1].substring(0, 12) : iso;
+      if (!iso) return '—';
+      var t = iso.replace('Z','').split('T');
+      return t.length > 1 ? t[1].substring(0,8) : iso;
+    }
+    function getCpColor(cpId) {
+      if (!_cpColors[cpId]) _cpColors[cpId] = CHART_COLORS[_colorIdx++ % CHART_COLORS.length];
+      return _cpColors[cpId];
     }
 
-    // ── Log table ─────────────────────────────────────────────────
-    var MAX_ROWS = 300;
+    // ── Navigation ────────────────────────────────────────────
+    function showPage(page) {
+      _activePage = page;
+      document.querySelectorAll('.page').forEach(function(p) {
+        p.classList.toggle('active', p.id === 'page-' + page);
+      });
+      document.querySelectorAll('.nav-item').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.page === page);
+      });
+      document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
+      if (page === 'loginlog') showLoginLog();
+      if (page === 'users')    showUsers();
+    }
 
-    function addLogRow(ev) {
-      var tbody = document.getElementById('log-body');
-      var tr = document.createElement('tr');
+    // ── Stats update ──────────────────────────────────────────
+    function updateStats() {
+      var chg = Object.keys(_activeTxnSet).length;
+      var kwh = (_totalEnergyWh / 1000).toFixed(1);
 
-      var payStr = JSON.stringify(ev.payload || {});
+      document.getElementById('stat-online').textContent   = String(onlineCount);
+      document.getElementById('stat-charging').textContent = String(chg);
+      document.getElementById('stat-txns').textContent     = String(txnCount);
+      document.getElementById('stat-energy').textContent   = kwh;
+      document.getElementById('tb-online').textContent     = String(onlineCount);
+      document.getElementById('tb-charging').textContent   = String(chg);
+      document.getElementById('tb-kwh').textContent        = kwh;
+      document.getElementById('nav-station-count').textContent = String(onlineCount);
+      document.getElementById('nav-txn-count').textContent    = String(txnCount);
+    }
 
-      tr.innerHTML =
-        '<td class="ts-cell">'  + esc(fmtTs(ev.ts))        + '</td>' +
-        '<td class="cp-cell">'  + esc(ev.cp_id || '')       + '</td>' +
-        '<td class="dir-cell dir-' + esc(ev.direction || '') + '">' + esc(ev.direction || '') + '</td>' +
-        '<td class="act-cell">' + esc(ev.action || '')       + '</td>' +
-        '<td class="pay-cell" title="' + esc(payStr) + '">' + esc(payStr) + '</td>';
+    // ── Charts ────────────────────────────────────────────────
+    function initCharts() {
+      if (_chartsInit) return;
+      if (typeof Chart === 'undefined') { setTimeout(initCharts, 200); return; }
+      _chartsInit = true;
 
-      // Click payload cell to expand/collapse
-      tr.querySelector('.pay-cell').addEventListener('click', function() {
-        this.classList.toggle('expanded');
+      Chart.defaults.color = '#64748b';
+      Chart.defaults.borderColor = '#1e2d40';
+
+      var lineCtx = document.getElementById('chart-line').getContext('2d');
+      _lineChart = new Chart(lineCtx, {
+        type: 'line',
+        data: { datasets: [] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          animation: false,
+          plugins: { legend: { position: 'top', labels: { boxWidth: 10, color: '#94a3b8', font: { size: 11 } } } },
+          scales: {
+            x: { type: 'time', time: { unit: 'second', displayFormats: { second: 'HH:mm:ss' } },
+                 ticks: { maxTicksLimit: 6, color: '#475569' },
+                 grid: { color: 'rgba(255,255,255,.04)' } },
+            y: { beginAtZero: true, title: { display: true, text: 'kWh', color: '#475569' },
+                 ticks: { color: '#475569' }, grid: { color: 'rgba(255,255,255,.04)' } }
+          }
+        }
       });
 
+      var donutCtx = document.getElementById('chart-donut').getContext('2d');
+      _donutChart = new Chart(donutCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Müsait','Şarjda','Hazırlanıyor','Bitiriyor','Hatalı','Dışı'],
+          datasets: [{
+            data: [0,0,0,0,0,0],
+            backgroundColor: ['#22c55e','#38b6ff','#f59e0b','#f97316','#ef4444','#555555'],
+            borderColor: '#161d2d',
+            borderWidth: 2,
+            hoverOffset: 4,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          cutout: '68%',
+          plugins: {
+            legend: { position: 'right', labels: { boxWidth: 10, color: '#94a3b8', font: { size: 11 }, padding: 12 } }
+          }
+        }
+      });
+
+      if (Object.keys(_liveData).length) _refreshLine();
+      updateDonut();
+    }
+
+    function _refreshLine() {
+      if (!_lineChart) return;
+      _lineChart.data.datasets = Object.keys(_liveData).map(function(cpId) {
+        var c = getCpColor(cpId);
+        return {
+          label: cpId, data: _liveData[cpId].slice(),
+          borderColor: c, backgroundColor: c + '1a',
+          fill: true, tension: 0.35, pointRadius: 3, pointHoverRadius: 5,
+        };
+      });
+      var now = Date.now();
+      _lineChart.options.scales.x.min = new Date(now - 120000);
+      _lineChart.options.scales.x.max = new Date(now + 8000);
+      _lineChart.update('none');
+    }
+
+    function updateLineChart(cpId, kwh) {
+      if (!_liveData[cpId]) _liveData[cpId] = [];
+      _liveData[cpId].push({ x: new Date(), y: kwh });
+      if (_liveData[cpId].length > 30) _liveData[cpId].shift();
+      _refreshLine();
+    }
+
+    function clearCpLive(cpId) {
+      delete _liveData[cpId];
+      _refreshLine();
+    }
+
+    function updateDonut() {
+      if (!_donutChart) return;
+      var counts = [0,0,0,0,0,0];
+      var MAP = { Available:0, Charging:1, Preparing:2, Finishing:3, Faulted:4, Unavailable:5 };
+      Object.values(_cpC1Status).forEach(function(s) {
+        if (MAP[s] !== undefined) counts[MAP[s]]++;
+      });
+      _donutChart.data.datasets[0].data = counts;
+      _donutChart.update('none');
+    }
+
+    // ── Log filter ─────────────────────────────────────────────
+    function addFilterChip(cpId) {
+      if (document.querySelector('.filter-chip[data-cp="'+cpId+'"]')) return;
+      var bar = document.getElementById('log-filter-bar');
+      var btn = document.createElement('button');
+      btn.className = 'filter-chip';
+      btn.dataset.cp = cpId;
+      btn.textContent = cpId;
+      btn.onclick = function() { setLogFilter(cpId); };
+      bar.appendChild(btn);
+    }
+
+    function setLogFilter(cpId) {
+      _logFilter = cpId;
+      document.querySelectorAll('.filter-chip').forEach(function(chip) {
+        chip.classList.toggle('active', cpId === null ? chip.dataset.cp === '__all__' : chip.dataset.cp === cpId);
+      });
+      var logs  = cpId ? (_cpLogs[cpId] || []) : _allLogs;
+      var tbody = document.getElementById('log-body');
+      tbody.innerHTML = '';
+      var start = Math.max(0, logs.length - MAX_LOG_ROWS);
+      for (var i = start; i < logs.length; i++) _prependLog(logs[i]);
+    }
+
+    function openCpLog(cpId) {
+      showPage('logs');
+      setLogFilter(cpId);
+    }
+
+    // ── Log table ──────────────────────────────────────────────
+    function _prependLog(ev) {
+      var tbody = document.getElementById('log-body');
+      var payStr = JSON.stringify(ev.payload || {});
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="td-mono td-muted">' + esc(fmtTs(ev.ts)) + '</td>' +
+        '<td class="td-mono td-bold">'  + esc(ev.cp_id||'') + '</td>' +
+        '<td class="td-dir-' + esc(ev.direction||'') + '">' + esc(ev.direction||'') + '</td>' +
+        '<td class="td-bold">'          + esc(ev.action||'') + '</td>' +
+        '<td class="td-pay" title="'   + esc(payStr) + '">' + esc(payStr) + '</td>';
+      tr.querySelector('.td-pay').addEventListener('click', function() { this.classList.toggle('expanded'); });
       tbody.prepend(tr);
-
-      while (tbody.children.length > MAX_ROWS) {
-        tbody.removeChild(tbody.lastChild);
-      }
+      while (tbody.children.length > MAX_LOG_ROWS) tbody.removeChild(tbody.lastChild);
     }
 
-    function clearLogs() {
-      document.getElementById('log-body').innerHTML = '';
+    function addLogRow(ev) {
+      if (ev.action === 'MeterValues' || ev.action === 'MeterValuesResponse') return;
+      if (!_cpLogs[ev.cp_id]) _cpLogs[ev.cp_id] = [];
+      _cpLogs[ev.cp_id].push(ev);
+      if (_cpLogs[ev.cp_id].length > MAX_CP_LOGS) _cpLogs[ev.cp_id].shift();
+      _allLogs.push(ev);
+      if (_allLogs.length > MAX_LOG_ROWS * 2) _allLogs.shift();
+      if (_logFilter === null || _logFilter === ev.cp_id) _prependLog(ev);
     }
 
-    // ── Station cards ─────────────────────────────────────────────
-    var onlineCount = 0;
+    function clearLogs() { document.getElementById('log-body').innerHTML = ''; }
 
-    function updateStationCount() {
-      document.getElementById('station-count').textContent = String(onlineCount);
-    }
-
-    function connectorBadgesHtml(connectors) {
+    // ── Station cards ──────────────────────────────────────────
+    function connBadges(connectors) {
       var entries = Object.entries(connectors || {});
-      if (!entries.length) return '<span style="color:#9ca3af;font-size:.75rem">Bekleniyor…</span>';
+      if (!entries.length) return '<span style="color:var(--t3);font-size:.73rem">Bekleniyor…</span>';
       return entries.map(function(pair) {
-        var id = pair[0];
-        var c  = pair[1];
-        var label = id === '0' ? 'CP' : 'C' + id;
-        var cls   = 'cs-' + (c.status || 'Unknown');
-        return '<span class="c-badge ' + esc(cls) + '">' + esc(label) + ': ' + esc(c.status || '') + '</span>';
+        var id = pair[0], c = pair[1];
+        return '<span class="c-badge cs-' + esc(c.status||'Unknown') + '">'
+          + esc(id==='0'?'CP':'C'+id) + ' · ' + esc(c.status||'') + '</span>';
       }).join('');
     }
 
     function hasFault(connectors) {
-      return Object.values(connectors || {}).some(function(c) { return c.status === 'Faulted'; });
+      return Object.values(connectors||{}).some(function(c){ return c.status==='Faulted'; });
     }
 
-    function heartbeatHtml(isoTs) {
-      if (!isoTs) return '';
+    function heartbeatHtml(ts) {
+      if (!ts) return '';
       var stale = false;
-      try {
-        var diffMs = Date.now() - new Date(isoTs).getTime();
-        stale = diffMs > 60000; // stale if no heartbeat for > 60s
-      } catch(e) {}
-      var cls = stale ? 's-hb stale' : 's-hb';
-      var label = stale ? '⚠ Heartbeat kesildi: ' : 'Son Heartbeat: ';
-      return '<div class="' + cls + '">' + label + fmtTs(isoTs) + '</div>';
+      try { stale = Date.now() - new Date(ts).getTime() > 60000; } catch(e){}
+      return '<div class="cp-hb' + (stale?' stale':'') + '">'
+        + (stale ? '⚠ Heartbeat kesildi: ' : '♥ Son HB: ') + fmtTs(ts) + '</div>';
     }
 
     function sendAction(cpId, action) {
-      var btns = document.querySelectorAll('#card-' + cpId + ' button');
-      btns.forEach(function(b) { b.disabled = true; });
+      var btns = document.querySelectorAll('#cpcard-' + cpId + ' .btn');
+      btns.forEach(function(b){ b.disabled = true; });
       fetch('/api/action', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({cp_id: cpId, action: action, connector_id: 1})
       })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.error) console.warn('Action error:', data.error);
-      })
-      .catch(function(e) { console.error(e); })
-      .finally(function() {
-        btns.forEach(function(b) { b.disabled = false; });
-      });
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if (d.error) console.warn(d.error); })
+      .catch(function(e){ console.error(e); })
+      .finally(function(){ btns.forEach(function(b){ b.disabled = false; }); });
+    }
+
+    function sendReset(cpId) {
+      if (!confirm(cpId + ' istasyonuna Hard Reset gönderilsin mi?')) return;
+      fetch('/api/action', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({cp_id: cpId, action: 'Reset', reset_type: 'Hard'})
+      }).catch(console.error);
+    }
+
+    function startDur(cpId, startIso) {
+      stopDur(cpId);
+      var t0 = new Date(startIso).getTime();
+      _durationTimers[cpId] = setInterval(function() {
+        var el = document.getElementById('dur-'+cpId);
+        if (!el) { stopDur(cpId); return; }
+        var s = Math.floor((Date.now()-t0)/1000);
+        var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+        el.textContent = (h?h+'sa ':'') + m+'dk ' + (sec<10?'0':'') + sec + 's';
+      }, 1000);
+    }
+
+    function stopDur(cpId) {
+      if (_durationTimers[cpId]) { clearInterval(_durationTimers[cpId]); delete _durationTimers[cpId]; }
     }
 
     function upsertCard(ev) {
       var cpId = ev.cp_id;
-      var cardId = 'card-' + cpId;
-      var scroll = document.getElementById('stations-scroll');
 
-      var hint = document.getElementById('empty-hint');
-      if (hint) hint.remove();
+      var empty = document.getElementById('cp-empty');
+      if (empty) empty.remove();
 
-      var card = document.getElementById(cardId);
+      var grid = document.getElementById('cp-grid');
+      var card = document.getElementById('cpcard-' + cpId);
       var isNew = !card;
       if (isNew) {
         card = document.createElement('div');
-        card.id = cardId;
-        scroll.appendChild(card);
+        card.id = 'cpcard-' + cpId;
+        grid.appendChild(card);
         onlineCount++;
-        updateStationCount();
+        addFilterChip(cpId);
       }
 
-      var fault = hasFault(ev.connectors);
-      card.className = 's-card ' + (fault ? 'faulted' : 'online');
+      var c1      = (ev.connectors && ev.connectors['1']) ? ev.connectors['1'] : {};
+      var status  = c1.status || 'Unknown';
+      var txnId   = c1.transaction_id !== undefined ? c1.transaction_id : null;
+      var meterWh = c1.meter_latest_wh !== undefined ? c1.meter_latest_wh : null;
+      var txnTs   = c1.txn_start_time || null;
+      var fault   = hasFault(ev.connectors);
 
-      var meta = [ev.vendor, ev.model].filter(Boolean).join(' ');
-      var fw   = ev.firmware ? ' &bull; FW: ' + esc(ev.firmware) : '';
+      // Track status for donut chart
+      _cpC1Status[cpId] = status;
+      updateDonut();
 
-      // Determine button states from connector 1 status
-      var c1status = (ev.connectors && ev.connectors['1']) ? ev.connectors['1'].status : 'Unknown';
-      var ACTIVE_STATUSES = ['Charging', 'Preparing', 'Finishing', 'SuspendedEV', 'SuspendedEVSE'];
-      var isActive = ACTIVE_STATUSES.indexOf(c1status) !== -1;
-      var startDisabled = isActive ? ' disabled' : '';
-      var stopDisabled  = isActive ? '' : ' disabled';
+      // Track active txn for stats
+      if (txnId !== null) {
+        _activeTxnSet[cpId] = true;
+        if (meterWh !== null) updateLineChart(cpId, meterWh / 1000);
+      } else {
+        if (_activeTxnSet[cpId]) { delete _activeTxnSet[cpId]; clearCpLive(cpId); }
+      }
+      updateStats();
 
+      card.className = 'cp-card' + (fault ? ' faulted' : txnId !== null ? ' charging' : ' online');
+
+      var ACTIVE = ['Charging','Preparing','Finishing','SuspendedEV','SuspendedEVSE'];
+      var active = ACTIVE.indexOf(status) !== -1;
+      var sd = active ? ' disabled' : '';
+      var pd = active ? '' : ' disabled';
+
+      var txnRow = '';
+      if (txnId !== null) {
+        var kwh = meterWh !== null ? (meterWh/1000).toFixed(2) : '—';
+        txnRow = '<div class="cp-txn-row">'
+          + '<span class="cp-txn-id">Txn #' + esc(String(txnId)) + '</span>'
+          + '<span class="cp-txn-kwh">⚡ ' + esc(kwh) + ' kWh</span>'
+          + '<span class="cp-txn-dur" id="dur-' + esc(cpId) + '">…</span>'
+          + '</div>';
+      }
+
+      var meta = [ev.vendor, ev.model].filter(Boolean).join(' · ')
+        + (ev.firmware ? ' · FW ' + ev.firmware : '');
+
+      var ce = esc(cpId);
       card.innerHTML =
-        '<div class="s-card-top">' +
-          '<span class="s-cp-id">' + esc(cpId) + '</span>' +
-          '<span class="s-status-pill pill-online">ONLINE</span>' +
-        '</div>' +
-        '<div class="s-meta">' + esc(meta) + fw + '</div>' +
-        '<div class="connectors">' + connectorBadgesHtml(ev.connectors) + '</div>' +
-        heartbeatHtml(ev.last_heartbeat) +
-        '<div class="s-actions">' +
-          '<button class="btn-start"' + startDisabled + ' onclick="sendAction(\'' + esc(cpId) + '\', \'RemoteStartTransaction\')">▶ Başlat</button>' +
-          '<button class="btn-stop"' + stopDisabled + '  onclick="sendAction(\'' + esc(cpId) + '\', \'RemoteStopTransaction\')">■ Durdur</button>' +
-        '</div>';
+        '<div class="cp-top">'
+          + '<div><div class="cp-id">' + ce + '</div><div class="cp-meta">' + esc(meta) + '</div></div>'
+          + '<span class="cp-status-pill pill-online">ONLINE</span>'
+        + '</div>'
+        + '<div class="cp-connectors">' + connBadges(ev.connectors) + '</div>'
+        + txnRow
+        + heartbeatHtml(ev.last_heartbeat)
+        + '<div class="cp-actions">'
+          + '<button class="btn btn-start"' + sd + ' onclick="sendAction(\'' + ce + '\',\'RemoteStartTransaction\')">▶ Başlat</button>'
+          + '<button class="btn btn-stop"'  + pd + ' onclick="sendAction(\'' + ce + '\',\'RemoteStopTransaction\')">■ Durdur</button>'
+          + '<button class="btn btn-reset" onclick="sendReset(\'' + ce + '\')">⟳</button>'
+          + '<button class="btn btn-log" onclick="openCpLog(\'' + ce + '\')">📋</button>'
+        + '</div>';
+
+      if (txnId !== null && txnTs) startDur(cpId, txnTs);
+      else stopDur(cpId);
     }
 
     function markOffline(cpId) {
-      var card = document.getElementById('card-' + cpId);
+      var card = document.getElementById('cpcard-' + cpId);
       if (!card) return;
-      card.className = 's-card';
-      var pill = card.querySelector('.s-status-pill');
-      if (pill) { pill.className = 's-status-pill pill-offline'; pill.textContent = 'OFFLINE'; }
+      card.className = 'cp-card';
+      var pill = card.querySelector('.cp-status-pill');
+      if (pill) { pill.className = 'cp-status-pill pill-offline'; pill.textContent = 'OFFLINE'; }
+      stopDur(cpId);
+      delete _activeTxnSet[cpId];
+      delete _cpC1Status[cpId];
+      clearCpLive(cpId);
+      updateDonut();
       onlineCount = Math.max(0, onlineCount - 1);
-      updateStationCount();
+      updateStats();
     }
 
-    // ── SSE connection ────────────────────────────────────────────
-    var pill = document.getElementById('conn-pill');
+    // ── Transaction history ────────────────────────────────────
+    function addTransactionRow(ev) {
+      txnCount++;
+      if (ev.stop_time) _totalEnergyWh += (ev.energy_wh || 0);
+      updateStats();
 
+      var kwh   = typeof ev.energy_wh === 'number' ? (ev.energy_wh/1000).toFixed(2) : '—';
+      var start = ev.start_time ? fmtTs(ev.start_time) : '—';
+      var stop  = ev.stop_time  ? fmtTs(ev.stop_time)  : '—';
+      var tid   = String(ev.transaction_id || '');
+
+      // Full txn table
+      var tbody = document.getElementById('txn-body');
+      var emptyRow = tbody.querySelector('.empty-row');
+      if (emptyRow) emptyRow.remove();
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td class="td-bold">'   + esc(ev.cp_id||'')    + '</td>' +
+        '<td class="td-mono td-blue">#' + esc(tid)      + '</td>' +
+        '<td class="td-mono td-muted">' + esc(start)    + '</td>' +
+        '<td class="td-mono td-muted">' + esc(stop)     + '</td>' +
+        '<td class="td-green">'  + esc(kwh) + ' kWh</td>' +
+        '<td class="td-muted">'  + esc(ev.reason||'')   + '</td>';
+      tbody.prepend(tr);
+      while (tbody.children.length > 50) tbody.removeChild(tbody.lastChild);
+
+      // Overview mini table (last 5)
+      var ovBody = document.getElementById('ov-txn-body');
+      var ovEmpty = ovBody.querySelector('.empty-row');
+      if (ovEmpty) ovEmpty.remove();
+      var tr2 = document.createElement('tr');
+      tr2.innerHTML =
+        '<td class="td-bold">'  + esc(ev.cp_id||'')   + '</td>' +
+        '<td class="td-mono td-blue">#' + esc(tid)    + '</td>' +
+        '<td class="td-mono td-muted">' + esc(stop)   + '</td>' +
+        '<td class="td-green">' + esc(kwh) + ' kWh</td>' +
+        '<td class="td-muted">' + esc(ev.reason||'')  + '</td>';
+      ovBody.prepend(tr2);
+      while (ovBody.children.length > 5) ovBody.removeChild(ovBody.lastChild);
+
+      // Update bar chart (overview bar chart — reuse line chart for now, bar is separate)
+      _barLabels.push('#' + tid);
+      _barDataArr.push(parseFloat(kwh));
+      if (_barLabels.length > 10) { _barLabels.shift(); _barDataArr.shift(); }
+
+      document.getElementById('nav-txn-count').textContent = String(txnCount);
+    }
+
+    // ── SSE ───────────────────────────────────────────────────
+    var pill = document.getElementById('conn-pill');
     function connectSSE() {
       var es = new EventSource('/events');
-
-      es.onopen = function() {
-        pill.textContent = '● Bağlı';
-        pill.className = 'connected';
-      };
-
+      es.onopen = function() { pill.textContent = '● Bağlı'; pill.className = 'connected'; };
       es.onmessage = function(e) {
-        var ev;
-        try { ev = JSON.parse(e.data); } catch(x) { return; }
-
-        if (ev.type === 'log')               { addLogRow(ev); }
-        else if (ev.type === 'charger_update')    { upsertCard(ev); }
-        else if (ev.type === 'charger_disconnect'){ markOffline(ev.cp_id); }
+        var ev; try { ev = JSON.parse(e.data); } catch(x){ return; }
+        if (ev.type === 'log') {
+          addLogRow(ev);
+          // Şarj başlatma onayı toast
+          if (ev.action === 'RemoteStartTransactionResponse' && ev.payload && ev.payload.status === 'Accepted') {
+            showToast('⚡ ' + ev.cp_id + ' şarj başlatıldı', 'var(--blue)');
+          }
+        } else if (ev.type === 'charger_update') {
+          // Yeni CP bağlantısı
+          if (!_knownCps[ev.cp_id]) {
+            _knownCps[ev.cp_id] = true;
+            showToast('🟢 ' + ev.cp_id + ' bağlandı', 'var(--green)');
+          }
+          // Hata durumu kontrolü
+          var prevC1 = _cpC1Status[ev.cp_id];
+          var newC1  = ev.connectors && ev.connectors['1'] ? ev.connectors['1'].status : null;
+          if (newC1 === 'Faulted' && prevC1 !== 'Faulted') {
+            showToast('⚠ ' + ev.cp_id + ' hata durumuna geçti', 'var(--red)');
+          }
+          upsertCard(ev);
+        } else if (ev.type === 'charger_disconnect') {
+          showToast('⭘ ' + ev.cp_id + ' bağlantısı kesildi', 'var(--t3)');
+          delete _knownCps[ev.cp_id];
+          markOffline(ev.cp_id);
+        } else if (ev.type === 'transaction_closed') {
+          var kwh = typeof ev.energy_wh === 'number' ? (ev.energy_wh / 1000).toFixed(2) : '—';
+          showToast('✓ ' + ev.cp_id + ' şarj tamamlandı · ' + kwh + ' kWh', 'var(--green)');
+          addTransactionRow(ev);
+        }
       };
-
-      es.onerror = function() {
-        pill.textContent = '● Bağlantı kesildi (yeniden bağlanıyor…)';
-        pill.className = 'error';
-      };
+      es.onerror = function() { pill.textContent = '● Bağlantı kesildi…'; pill.className = 'error'; };
     }
 
+    // Admin-only nav items başlangıçta gizle, /api/me sonra gösterir
+    _applyRoleUI();
+    fetch('/api/me', { credentials: 'same-origin' })
+      .then(function(r) {
+        if (!r.ok) throw new Error('/api/me ' + r.status);
+        return r.json();
+      })
+      .then(function(me) { _myRole = me.role || 'user'; _applyRoleUI(); })
+      .catch(function(e) { console.warn('[CPMS] /api/me hatası:', e); });
+
     connectSSE();
+    initCharts();
+
+    fetch('/api/transactions')
+      .then(function(r){ return r.json(); })
+      .then(function(txns){ txns.slice().reverse().forEach(addTransactionRow); })
+      .catch(function(){});
   </script>
 </body>
 </html>

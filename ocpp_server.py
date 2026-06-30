@@ -4,13 +4,18 @@ OCPP 1.6J WebSocket server.
 Charge points connect to:  ws://<host>:9000/ocpp/<CP_ID>
 
 Handled messages (CP -> Server):
-  BootNotification     -> Accepted
-  Heartbeat            -> currentTime
-  StatusNotification   -> {} (connector status stored in state)
+  BootNotification      -> Accepted
+  Heartbeat             -> currentTime
+  StatusNotification    -> {} (connector status stored in state)
+  Authorize             -> idTagInfo Accepted
+  StartTransaction      -> idTagInfo Accepted + transactionId
+  StopTransaction       -> idTagInfo Accepted
+  MeterValues           -> {}
 
 Server-initiated messages (Server -> CP):
   RemoteStartTransaction  -> {status: Accepted/Rejected}
   RemoteStopTransaction   -> {status: Accepted/Rejected}
+  Reset                   -> {status: Accepted/Rejected}
 """
 import asyncio
 import json
@@ -18,6 +23,7 @@ import datetime
 import uuid
 import websockets
 import state
+import db
 
 
 def _now() -> str:
@@ -73,11 +79,111 @@ def _handle_status_notification(cp_id: str, payload: dict) -> dict:
     now = _now()
     connector_id = str(payload.get("connectorId", 0))
     cp = state.chargers.setdefault(cp_id, {"connectors": {}})
-    cp.setdefault("connectors", {})[connector_id] = {
+    # Use .update() so existing fields (transaction_id, meter_latest_wh) are preserved
+    conn = cp.setdefault("connectors", {}).setdefault(connector_id, {})
+    conn.update({
         "status": payload.get("status", "Unknown"),
         "errorCode": payload.get("errorCode", "NoError"),
         "timestamp": payload.get("timestamp", now),
+    })
+    _broadcast_charger(cp_id)
+    return {}
+
+
+def _handle_authorize(cp_id: str, payload: dict) -> dict:
+    return {"idTagInfo": {"status": "Accepted"}}
+
+
+def _handle_start_transaction(cp_id: str, payload: dict) -> dict:
+    connector_id = str(payload.get("connectorId", 1))
+    id_tag = payload.get("idTag", "")
+    meter_start = int(payload.get("meterStart", 0))
+    timestamp = payload.get("timestamp", _now())
+
+    tid = state.next_transaction_id()
+    state.transactions[tid] = {
+        "cp_id": cp_id,
+        "connector_id": connector_id,
+        "id_tag": id_tag,
+        "meter_start": meter_start,
+        "meter_stop": None,
+        "start_time": timestamp,
+        "stop_time": None,
+        "energy_wh": 0,
+        "reason": None,
     }
+
+    cp = state.chargers.setdefault(cp_id, {"connectors": {}})
+    conn = cp.setdefault("connectors", {}).setdefault(connector_id, {})
+    conn["transaction_id"] = tid
+    conn["meter_latest_wh"] = meter_start
+    conn["txn_start_time"] = timestamp
+
+    _broadcast_charger(cp_id)
+    db.upsert_transaction(tid, state.transactions[tid])
+    return {"idTagInfo": {"status": "Accepted"}, "transactionId": tid}
+
+
+def _handle_stop_transaction(cp_id: str, payload: dict) -> dict:
+    tid = int(payload.get("transactionId", 0))
+    meter_stop = int(payload.get("meterStop", 0))
+    timestamp = payload.get("timestamp", _now())
+    reason = payload.get("reason", "Local")
+
+    txn = state.transactions.get(tid)
+    if txn:
+        txn["meter_stop"] = meter_stop
+        txn["stop_time"] = timestamp
+        txn["reason"] = reason
+        txn["energy_wh"] = meter_stop - txn["meter_start"]
+
+        connector_id = txn["connector_id"]
+        cp = state.chargers.get(cp_id, {})
+        conn = cp.get("connectors", {}).get(connector_id, {})
+        conn.pop("transaction_id", None)
+        conn.pop("txn_start_time", None)
+        conn["meter_latest_wh"] = meter_stop
+
+    _broadcast_charger(cp_id)
+    if txn:
+        db.upsert_transaction(tid, txn)
+    state.broadcast({
+        "type": "transaction_closed",
+        "transaction_id": tid,
+        "cp_id": cp_id,
+        "energy_wh": txn["energy_wh"] if txn else 0,
+        "reason": reason,
+        "stop_time": timestamp,
+    })
+    return {"idTagInfo": {"status": "Accepted"}}
+
+
+def _handle_meter_values(cp_id: str, payload: dict) -> dict:
+    connector_id = str(payload.get("connectorId", 1))
+    tid = payload.get("transactionId")
+    if tid is not None:
+        tid = int(tid)
+
+    cp = state.chargers.get(cp_id, {})
+    conn = cp.get("connectors", {}).get(connector_id, {})
+
+    for meter_value in payload.get("meterValue", []):
+        for sample in meter_value.get("sampledValue", []):
+            measurand = sample.get("measurand", "Energy.Active.Import.Register")
+            unit = sample.get("unit", "Wh")
+            if measurand in ("Energy.Active.Import.Register", "") or "measurand" not in sample:
+                try:
+                    value_raw = float(sample.get("value", 0))
+                    wh = int(value_raw * 1000) if unit == "kWh" else int(value_raw)
+                    conn["meter_latest_wh"] = wh
+                    if tid and tid in state.transactions:
+                        state.transactions[tid]["energy_wh"] = (
+                            wh - state.transactions[tid]["meter_start"]
+                        )
+                except (ValueError, TypeError):
+                    pass
+                break
+
     _broadcast_charger(cp_id)
     return {}
 
@@ -109,8 +215,16 @@ async def _process_cp_call(cp_id: str, uid: str, action: str, payload: dict) -> 
         resp = _handle_heartbeat(cp_id, payload)
     elif action == "StatusNotification":
         resp = _handle_status_notification(cp_id, payload)
+    elif action == "Authorize":
+        resp = _handle_authorize(cp_id, payload)
+    elif action == "StartTransaction":
+        resp = _handle_start_transaction(cp_id, payload)
+    elif action == "StopTransaction":
+        resp = _handle_stop_transaction(cp_id, payload)
+    elif action == "MeterValues":
+        resp = _handle_meter_values(cp_id, payload)
     else:
-        return json.dumps([4, uid, "NotImplemented", f"Action '{action}' is not supported", {}])
+        return json.dumps([4, uid, "NotImplemented", "Action '{}' is not supported".format(action), {}])
 
     state.broadcast({
         "type": "log",
@@ -192,22 +306,31 @@ async def handle_charger(websocket, path: str):
 # Server-initiated OCPP calls
 # ---------------------------------------------------------------------------
 
-async def remote_action(cp_id: str, action: str, connector_id: int = 1) -> dict:
+async def remote_action(cp_id: str, action: str, connector_id: int = 1, extra: dict = None) -> dict:
     """
-    Send RemoteStartTransaction or RemoteStopTransaction to a charge point.
+    Send a server-initiated OCPP command to a charge point.
     Returns the charge point's response payload or raises on error/timeout.
     """
     ws = state.ws_connections.get(cp_id)
     if ws is None:
-        raise Exception(f"Charge point '{cp_id}' is not connected")
+        raise Exception("Charge point '{}' is not connected".format(cp_id))
 
     uid = _uid()
     if action == "RemoteStartTransaction":
         payload = {"connectorId": connector_id}
     elif action == "RemoteStopTransaction":
-        payload = {"transactionId": 1}
+        cp = state.chargers.get(cp_id, {})
+        conn = cp.get("connectors", {}).get(str(connector_id), {})
+        tid = conn.get("transaction_id")
+        if tid is None:
+            raise Exception(
+                "No active transaction on connector {} of '{}'".format(connector_id, cp_id)
+            )
+        payload = {"transactionId": tid}
+    elif action == "Reset":
+        payload = {"type": (extra or {}).get("reset_type", "Hard")}
     else:
-        raise Exception(f"Unknown action: {action}")
+        raise Exception("Unknown action: {}".format(action))
 
     loop = asyncio.get_event_loop()
     fut = loop.create_future()
