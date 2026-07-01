@@ -5,10 +5,10 @@ Her CP için bağımsız asyncio task çalıştırır. Tüm state (pending, acti
 fonksiyon-lokal değişkenlerde tutulur — paylaşım yok.
 
 Kullanım:
-    python3 sim_multi.py                       # localhost, 10 CP (CP002-CP011)
+    python3 sim_multi.py                       # localhost, 10 CP (CP001-CP010)
     python3 sim_multi.py 192.168.1.10          # özel sunucu IP
-    python3 sim_multi.py localhost 5           # 5 CP
-    python3 sim_multi.py localhost 10 2        # 10 CP, CP002'den başla
+    python3 sim_multi.py localhost 5           # 5 CP (CP001-CP005)
+    python3 sim_multi.py localhost 10 1        # 10 CP, CP001'den başla
 """
 import asyncio
 import json
@@ -19,7 +19,7 @@ import websockets
 
 HOST  = sys.argv[1] if len(sys.argv) > 1 else "localhost"
 COUNT = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-START = int(sys.argv[3]) if len(sys.argv) > 3 else 2
+START = int(sys.argv[3]) if len(sys.argv) > 3 else 1
 
 PORT               = 9000
 HEARTBEAT_INTERVAL = 20
@@ -76,14 +76,24 @@ async def run_cp(cp_id):
                 "transactionId": transaction_id,
                 "meterValue": [{
                     "timestamp": _now(),
-                    "sampledValue": [{
-                        "value": str(kwh),
-                        "measurand": "Energy.Active.Import.Register",
-                        "unit": "kWh",
-                        "context": "Sample.Periodic",
-                        "format": "Raw",
-                        "location": "Outlet",
-                    }],
+                    "sampledValue": [
+                        {
+                            "value": str(kwh),
+                            "measurand": "Energy.Active.Import.Register",
+                            "unit": "kWh",
+                            "context": "Sample.Periodic",
+                            "format": "Raw",
+                            "location": "Outlet",
+                        },
+                        {
+                            "value": "22000",
+                            "measurand": "Power.Active.Import",
+                            "unit": "W",
+                            "context": "Sample.Periodic",
+                            "format": "Raw",
+                            "location": "Outlet",
+                        },
+                    ],
                 }],
             })
 
