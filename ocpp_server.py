@@ -182,7 +182,12 @@ def _handle_meter_values(cp_id: str, payload: dict) -> dict:
                         )
                 except (ValueError, TypeError):
                     pass
-                break
+            elif measurand == "Power.Active.Import":
+                try:
+                    value_raw = float(sample.get("value", 0))
+                    conn["power_w"] = int(value_raw * 1000) if unit == "kW" else int(value_raw)
+                except (ValueError, TypeError):
+                    pass
 
     _broadcast_charger(cp_id)
     return {}
@@ -224,6 +229,8 @@ async def _process_cp_call(cp_id: str, uid: str, action: str, payload: dict) -> 
     elif action == "MeterValues":
         resp = _handle_meter_values(cp_id, payload)
     else:
+        state.broadcast({"type": "log", "ts": _now(), "cp_id": cp_id,
+            "direction": "IN", "action": action, "unique_id": uid, "payload": payload})
         return json.dumps([4, uid, "NotImplemented", "Action '{}' is not supported".format(action), {}])
 
     state.broadcast({
@@ -293,6 +300,27 @@ async def handle_charger(websocket, path: str):
     except websockets.exceptions.ConnectionClosed:
         pass
     finally:
+        cp = state.chargers.get(cp_id, {})
+        for conn in cp.get("connectors", {}).values():
+            tid = conn.get("transaction_id")
+            if tid is not None:
+                txn = state.transactions.get(int(tid))
+                if txn and txn.get("stop_time") is None:
+                    now = _now()
+                    meter_stop = conn.get("meter_latest_wh", txn["meter_start"])
+                    txn["meter_stop"] = meter_stop
+                    txn["stop_time"] = now
+                    txn["reason"] = "PowerLoss"
+                    txn["energy_wh"] = meter_stop - txn["meter_start"]
+                    db.upsert_transaction(int(tid), txn)
+                    state.broadcast({
+                        "type": "transaction_closed",
+                        "transaction_id": int(tid),
+                        "cp_id": cp_id,
+                        "energy_wh": txn["energy_wh"],
+                        "reason": "PowerLoss",
+                        "stop_time": now,
+                    })
         state.chargers.pop(cp_id, None)
         state.ws_connections.pop(cp_id, None)
         state.broadcast({

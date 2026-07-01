@@ -8,8 +8,9 @@ import collections
 # {cp_id: {vendor, model, serial, firmware, connectors, last_heartbeat, connected_at}}
 chargers = {}
 
-# Ring buffer of the last 500 log entries
-log_buffer = collections.deque(maxlen=500)
+# Ring buffer per charge point: {cp_id: deque(maxlen=200)}
+_LOG_PER_CP = 200
+log_buffer: dict = {}
 
 # One asyncio.Queue per open SSE connection
 _sse_queues = []
@@ -36,7 +37,11 @@ def broadcast(event: dict):
     Log-type events are also stored in log_buffer.
     """
     if event.get("type") == "log":
-        log_buffer.append(event)
+        cp_id = event.get("cp_id")
+        if cp_id:
+            if cp_id not in log_buffer:
+                log_buffer[cp_id] = collections.deque(maxlen=_LOG_PER_CP)
+            log_buffer[cp_id].append(event)
     dead = []
     for q in _sse_queues:
         try:
@@ -66,7 +71,11 @@ def get_initial_snapshot():
     Return (log_list, chargers_dict) snapshot for replaying history
     to a newly connected SSE client.
     """
-    logs = list(log_buffer)
+    all_logs = []
+    for cp_logs in log_buffer.values():
+        all_logs.extend(cp_logs)
+    all_logs.sort(key=lambda e: e.get("ts", ""))
+    logs = all_logs
     cps = {}
     for cp_id, info in chargers.items():
         cps[cp_id] = {

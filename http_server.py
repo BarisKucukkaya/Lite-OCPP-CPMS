@@ -374,7 +374,13 @@ async def _handle_client(reader, writer):
         elif method == "GET" and path == "/api/login-log":
             if await _require_admin(headers, writer):
                 return
-            await _write_json(writer, db.get_login_log())
+            raw_qs = parts[1].split("?", 1)[1] if "?" in parts[1] else ""
+            q_filter = ""
+            for param in raw_qs.split("&"):
+                if param.startswith("q="):
+                    q_filter = param[2:]
+                    break
+            await _write_json(writer, db.get_login_log(username_filter=q_filter))
 
         elif method == "GET" and path == "/api/users":
             if await _require_admin(headers, writer):

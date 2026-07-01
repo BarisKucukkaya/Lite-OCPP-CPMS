@@ -165,12 +165,20 @@ def delete_user(username: str):
     conn.close()
 
 
-def get_login_log(limit: int = 200):
-    """Son giriş kayıtlarını döndür (en yeni önce)."""
+def get_login_log(limit: int = 200, username_filter: str = ""):
+    """Başarılı giriş kayıtlarını döndür (en yeni önce). username_filter ile LIKE araması yapılır."""
     conn = _connect()
-    rows = conn.execute(
-        "SELECT username, ip, login_time, success FROM login_log ORDER BY id DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
+    if username_filter:
+        rows = conn.execute(
+            "SELECT username, ip, login_time FROM login_log "
+            "WHERE success = 1 AND username LIKE ? ORDER BY id DESC LIMIT ?",
+            ("%" + username_filter + "%", limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT username, ip, login_time FROM login_log "
+            "WHERE success = 1 ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
