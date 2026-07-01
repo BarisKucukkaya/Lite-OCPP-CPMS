@@ -187,10 +187,12 @@
       background: var(--card-accent, var(--accent));
       border-radius: 12px 12px 0 0;
     }
-    .stat-card.s-online   { --card-accent: var(--accent); }   /* Vestel kırmızı */
-    .stat-card.s-charging { --card-accent: var(--blue); }    /* LED mavisi */
-    .stat-card.s-txn      { --card-accent: var(--purple); }
-    .stat-card.s-energy   { --card-accent: var(--green); }
+    .stat-card.s-available { --card-accent: var(--green); }
+    .stat-card.s-charging  { --card-accent: var(--blue); }
+    .stat-card.s-faulted   { --card-accent: var(--red); }
+    .stat-card.s-offline   { --card-accent: var(--t3); }
+    .stat-card { cursor: pointer; user-select: none; }
+    .stat-card.selected { border-color: var(--card-accent, var(--accent)); box-shadow: 0 0 0 2px var(--card-accent, var(--accent)); }
 
     .stat-lbl {
       font-size: .7rem;
@@ -509,7 +511,6 @@
       <div class="topbar-right">
         <div class="topbar-stat"><strong id="tb-online">0</strong> İstasyon</div>
         <div class="topbar-stat"><strong id="tb-charging">0</strong> Şarj Ediyor</div>
-        <div class="topbar-stat"><strong id="tb-kwh">0.0</strong> kWh Toplam</div>
       </div>
     </header>
 
@@ -518,22 +519,21 @@
       <!-- ── Genel Bakış ─────────────────────────────────────── -->
       <section class="page active" id="page-overview">
         <div class="stat-row">
-          <div class="stat-card s-online">
-            <div class="stat-lbl">Aktif İstasyon</div>
-            <div class="stat-val" id="stat-online">0</div>
+          <div class="stat-card s-available" onclick="filterByStatus('available')">
+            <div class="stat-lbl">Müsait</div>
+            <div class="stat-val" id="stat-available">0</div>
           </div>
-          <div class="stat-card s-charging">
+          <div class="stat-card s-charging" onclick="filterByStatus('charging')">
             <div class="stat-lbl">Şarj Ediyor</div>
             <div class="stat-val" id="stat-charging">0</div>
           </div>
-          <div class="stat-card s-txn">
-            <div class="stat-lbl">Toplam İşlem</div>
-            <div class="stat-val" id="stat-txns">0</div>
+          <div class="stat-card s-faulted" onclick="filterByStatus('faulted')">
+            <div class="stat-lbl">Arızalı</div>
+            <div class="stat-val" id="stat-faulted">0</div>
           </div>
-          <div class="stat-card s-energy">
-            <div class="stat-lbl">Toplam Enerji</div>
-            <div class="stat-val" id="stat-energy">0.0</div>
-            <div class="stat-unit">kWh</div>
+          <div class="stat-card s-offline" onclick="filterByStatus('offline')">
+            <div class="stat-lbl">Çevrimdışı</div>
+            <div class="stat-val" id="stat-offline">0</div>
           </div>
         </div>
 
@@ -565,6 +565,13 @@
 
       <!-- ── İstasyonlar ─────────────────────────────────────── -->
       <section class="page" id="page-stations">
+        <div id="station-filter-bar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
+          <button class="filter-chip active" data-status="all" onclick="filterByStatus(null)">Tümü</button>
+          <button class="filter-chip" data-status="available" onclick="filterByStatus('available')">Müsait · <span id="chip-available">0</span></button>
+          <button class="filter-chip" data-status="charging" onclick="filterByStatus('charging')">Şarj Ediyor · <span id="chip-charging">0</span></button>
+          <button class="filter-chip" data-status="faulted" onclick="filterByStatus('faulted')">Arızalı · <span id="chip-faulted">0</span></button>
+          <button class="filter-chip" data-status="offline" onclick="filterByStatus('offline')">Çevrimdışı · <span id="chip-offline">0</span></button>
+        </div>
         <div class="cp-grid" id="cp-grid">
           <div class="cp-empty" id="cp-empty">Bağlı istasyon beklenıyor…</div>
         </div>
@@ -577,10 +584,10 @@
           <div class="card-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>CP</th><th>#</th><th>Başlangıç</th><th>Bitiş</th><th>Enerji</th><th>Sebep</th></tr>
+                <tr><th>CP</th><th>#</th><th>Kart ID</th><th>Başlangıç</th><th>Bitiş</th><th>Enerji</th><th>Sebep</th></tr>
               </thead>
               <tbody id="txn-body">
-                <tr class="empty-row"><td colspan="6">Henüz tamamlanmış işlem yok</td></tr>
+                <tr class="empty-row"><td colspan="7">Henüz tamamlanmış işlem yok</td></tr>
               </tbody>
             </table>
           </div>
@@ -616,16 +623,19 @@
           <div class="card-hdr">
             Giriş Logları
             <div class="card-hdr-right">
+              <input id="loginlog-search" type="text" placeholder="Kullanıcı ara…"
+                style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.8rem;padding:5px 10px;outline:none;width:160px;"
+                oninput="showLoginLog()" />
               <button class="clear-btn" onclick="showLoginLog()">↺ Yenile</button>
             </div>
           </div>
           <div class="card-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>Tarih / Saat</th><th>Kullanıcı</th><th>IP Adresi</th><th>Durum</th></tr>
+                <tr><th>Tarih / Saat</th><th>Kullanıcı</th><th>IP Adresi</th></tr>
               </thead>
               <tbody id="loginlog-body">
-                <tr class="empty-row"><td colspan="4">Henüz giriş kaydı yok</td></tr>
+                <tr class="empty-row"><td colspan="3">Henüz giriş kaydı yok</td></tr>
               </tbody>
             </table>
           </div>
@@ -653,6 +663,9 @@
           <div class="card-hdr">
             Kullanıcı Listesi
             <div class="card-hdr-right">
+              <input id="user-search" type="text" placeholder="Kullanıcı ara…"
+                style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.8rem;padding:5px 10px;outline:none;width:160px;"
+                oninput="renderUsers()" />
               <button class="clear-btn" onclick="showUsers()">↺ Yenile</button>
             </div>
           </div>
@@ -699,6 +712,9 @@
     var _chartsInit    = false;
     var _knownCps      = {};   // {cp_id: true} — bağlantı toast kontrolü
     var _myRole        = 'user';  // /api/me'den gelir
+    var _offlineCps    = {};   // {cp_id: true} — offline istasyonlar
+    var _countedTxnIds = {};   // {tid: true} — çift sayım önleme
+    var _statusFilter  = null; // 'available'|'charging'|'faulted'|'offline'|null
 
     // ── Toast bildirimleri ────────────────────────────────────
     function showToast(msg, color) {
@@ -725,28 +741,37 @@
     }
 
     // ── Kullanıcı yönetimi ────────────────────────────────────
+    var _allUsers = [];
+
     function showUsers() {
       fetch('/api/users', { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
         .then(function(rows) {
-          var tbody = document.getElementById('users-body');
-          tbody.innerHTML = '';
-          if (!rows.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Henüz normal kullanıcı yok</td></tr>';
-            return;
-          }
-          rows.forEach(function(row) {
-            var tr = document.createElement('tr');
-            var ce = esc(row.username);
-            tr.innerHTML =
-              '<td class="td-bold">'          + ce                                                         + '</td>' +
-              '<td class="td-mono td-muted">' + esc(row.created_at || '—')                                + '</td>' +
-              '<td class="td-muted">Kullanıcı</td>' +
-              '<td><button onclick="deleteUser(\'' + ce + '\')" style="padding:3px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:5px;font-size:.72rem;cursor:pointer;">Sil</button></td>';
-            tbody.appendChild(tr);
-          });
+          _allUsers = rows;
+          renderUsers();
         })
         .catch(function() {});
+    }
+
+    function renderUsers() {
+      var q = ((document.getElementById('user-search') || {}).value || '').toLowerCase();
+      var rows = q ? _allUsers.filter(function(r) { return r.username.toLowerCase().indexOf(q) !== -1; }) : _allUsers;
+      var tbody = document.getElementById('users-body');
+      tbody.innerHTML = '';
+      if (!rows.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="4">' + (q ? 'Kullanıcı bulunamadı' : 'Henüz normal kullanıcı yok') + '</td></tr>';
+        return;
+      }
+      rows.forEach(function(row) {
+        var tr = document.createElement('tr');
+        var ce = esc(row.username);
+        tr.innerHTML =
+          '<td class="td-bold">'          + ce                          + '</td>' +
+          '<td class="td-mono td-muted">' + esc(row.created_at || '—') + '</td>' +
+          '<td class="td-muted">Kullanıcı</td>' +
+          '<td><button onclick="deleteUser(\'' + ce + '\')" style="padding:3px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:5px;font-size:.72rem;cursor:pointer;">Sil</button></td>';
+        tbody.appendChild(tr);
+      });
     }
 
     function addUser() {
@@ -793,23 +818,22 @@
 
     // ── Giriş logları ─────────────────────────────────────────
     function showLoginLog() {
-      fetch('/api/login-log', { credentials: 'same-origin' })
+      var q = (document.getElementById('loginlog-search') || {}).value || '';
+      fetch('/api/login-log' + (q ? '?q=' + encodeURIComponent(q) : ''), { credentials: 'same-origin' })
         .then(function(r) { return r.json(); })
         .then(function(rows) {
           var tbody = document.getElementById('loginlog-body');
           tbody.innerHTML = '';
           if (!rows.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Henüz giriş kaydı yok</td></tr>';
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="3">Kayıt bulunamadı</td></tr>';
             return;
           }
           rows.forEach(function(row) {
             var tr = document.createElement('tr');
-            var ok = row.success === 1 || row.success === true;
             tr.innerHTML =
               '<td class="td-mono td-muted">' + esc(row.login_time || '') + '</td>' +
               '<td class="td-bold">'           + esc(row.username || '') + '</td>' +
-              '<td class="td-mono td-muted">'  + esc(row.ip || '') + '</td>' +
-              '<td class="' + (ok ? 'badge-ok' : 'badge-fail') + '">' + (ok ? '✓ Başarılı' : '✗ Hatalı') + '</td>';
+              '<td class="td-mono td-muted">'  + esc(row.ip || '') + '</td>';
             tbody.appendChild(tr);
           });
         })
@@ -835,6 +859,10 @@
     // ── Navigation ────────────────────────────────────────────
     function showPage(page) {
       _activePage = page;
+      if (page !== 'stations' && _statusFilter !== null) {
+        _statusFilter = null;
+        applyStatusFilter();
+      }
       document.querySelectorAll('.page').forEach(function(p) {
         p.classList.toggle('active', p.id === 'page-' + page);
       });
@@ -849,17 +877,66 @@
     // ── Stats update ──────────────────────────────────────────
     function updateStats() {
       var chg = Object.keys(_activeTxnSet).length;
-      var kwh = (_totalEnergyWh / 1000).toFixed(1);
-
-      document.getElementById('stat-online').textContent   = String(onlineCount);
-      document.getElementById('stat-charging').textContent = String(chg);
-      document.getElementById('stat-txns').textContent     = String(txnCount);
-      document.getElementById('stat-energy').textContent   = kwh;
-      document.getElementById('tb-online').textContent     = String(onlineCount);
-      document.getElementById('tb-charging').textContent   = String(chg);
-      document.getElementById('tb-kwh').textContent        = kwh;
+      document.getElementById('tb-online').textContent   = String(onlineCount);
+      document.getElementById('tb-charging').textContent = String(chg);
       document.getElementById('nav-station-count').textContent = String(onlineCount);
       document.getElementById('nav-txn-count').textContent    = String(txnCount);
+      updateStatusCounts();
+    }
+
+    function updateStatusCounts() {
+      var ACTIVE = ['Charging','Preparing','Finishing','SuspendedEV','SuspendedEVSE'];
+      var available = 0, charging = 0, faulted = 0;
+      Object.values(_cpC1Status).forEach(function(s) {
+        if (s === 'Faulted') faulted++;
+        else if (ACTIVE.indexOf(s) !== -1) charging++;
+        else available++;
+      });
+      var offline = Object.keys(_offlineCps).length;
+      document.getElementById('stat-available').textContent = String(available);
+      document.getElementById('stat-charging').textContent  = String(charging);
+      document.getElementById('stat-faulted').textContent   = String(faulted);
+      document.getElementById('stat-offline').textContent   = String(offline);
+      document.getElementById('chip-available').textContent = String(available);
+      document.getElementById('chip-charging').textContent  = String(charging);
+      document.getElementById('chip-faulted').textContent   = String(faulted);
+      document.getElementById('chip-offline').textContent   = String(offline);
+    }
+
+    function filterByStatus(filter) {
+      _statusFilter = filter;
+      if (filter !== null) showPage('stations');
+      applyStatusFilter();
+    }
+
+    function clearStatusFilter() { filterByStatus(null); }
+
+    function applyStatusFilter() {
+      var ACTIVE = ['Charging','Preparing','Finishing','SuspendedEV','SuspendedEVSE'];
+      document.querySelectorAll('#cp-grid .cp-card').forEach(function(card) {
+        if (!_statusFilter) { card.style.display = ''; return; }
+        var cpId = card.id.replace('cpcard-', '');
+        var isOffline = !!_offlineCps[cpId];
+        var s = _cpC1Status[cpId] || '';
+        var matches;
+        if (_statusFilter === 'offline')       matches = isOffline;
+        else if (_statusFilter === 'charging') matches = !isOffline && ACTIVE.indexOf(s) !== -1;
+        else if (_statusFilter === 'faulted')  matches = !isOffline && s === 'Faulted';
+        else                                   matches = !isOffline && ACTIVE.indexOf(s) === -1 && s !== 'Faulted';
+        card.style.display = matches ? '' : 'none';
+      });
+      // Stat card seçili görünümü
+      document.querySelectorAll('.stat-card').forEach(function(c) { c.classList.remove('selected'); });
+      var scMap = {available:'s-available', charging:'s-charging', faulted:'s-faulted', offline:'s-offline'};
+      if (_statusFilter && scMap[_statusFilter]) {
+        var sc = document.querySelector('.stat-card.' + scMap[_statusFilter]);
+        if (sc) sc.classList.add('selected');
+      }
+      // Station chip aktif durumu
+      document.querySelectorAll('#station-filter-bar .filter-chip').forEach(function(c) {
+        var ds = c.dataset.status;
+        c.classList.toggle('active', _statusFilter === null ? ds === 'all' : ds === _statusFilter);
+      });
     }
 
     // ── Charts ────────────────────────────────────────────────
@@ -1009,7 +1086,16 @@
       if (_logFilter === null || _logFilter === ev.cp_id) _prependLog(ev);
     }
 
-    function clearLogs() { document.getElementById('log-body').innerHTML = ''; }
+    function clearLogs() {
+      if (_logFilter === null) {
+        _allLogs = [];
+        _cpLogs = {};
+      } else {
+        _cpLogs[_logFilter] = [];
+        _allLogs = _allLogs.filter(function(e) { return e.cp_id !== _logFilter; });
+      }
+      document.getElementById('log-body').innerHTML = '';
+    }
 
     // ── Station cards ──────────────────────────────────────────
     function connBadges(connectors) {
@@ -1055,16 +1141,19 @@
       }).catch(console.error);
     }
 
+
     function startDur(cpId, startIso) {
       stopDur(cpId);
       var t0 = new Date(startIso).getTime();
-      _durationTimers[cpId] = setInterval(function() {
+      function tick() {
         var el = document.getElementById('dur-'+cpId);
         if (!el) { stopDur(cpId); return; }
         var s = Math.floor((Date.now()-t0)/1000);
         var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
         el.textContent = (h?h+'sa ':'') + m+'dk ' + (sec<10?'0':'') + sec + 's';
-      }, 1000);
+      }
+      tick();
+      _durationTimers[cpId] = setInterval(tick, 1000);
     }
 
     function stopDur(cpId) {
@@ -1087,6 +1176,7 @@
         onlineCount++;
         addFilterChip(cpId);
       }
+      delete _offlineCps[cpId];
 
       var c1      = (ev.connectors && ev.connectors['1']) ? ev.connectors['1'] : {};
       var status  = c1.status || 'Unknown';
@@ -1116,11 +1206,14 @@
       var pd = active ? '' : ' disabled';
 
       var txnRow = '';
+      var powerW = c1.power_w !== undefined ? c1.power_w : null;
       if (txnId !== null) {
         var kwh = meterWh !== null ? (meterWh/1000).toFixed(2) : '—';
+        var powerStr = powerW !== null ? (powerW / 1000).toFixed(1) + ' kW' : '—';
         txnRow = '<div class="cp-txn-row">'
           + '<span class="cp-txn-id">Txn #' + esc(String(txnId)) + '</span>'
           + '<span class="cp-txn-kwh">⚡ ' + esc(kwh) + ' kWh</span>'
+          + '<span class="cp-txn-kwh" style="color:var(--blue)">〜 ' + esc(powerStr) + '</span>'
           + '<span class="cp-txn-dur" id="dur-' + esc(cpId) + '">…</span>'
           + '</div>';
       }
@@ -1146,6 +1239,7 @@
 
       if (txnId !== null && txnTs) startDur(cpId, txnTs);
       else stopDur(cpId);
+      if (_statusFilter) applyStatusFilter();
     }
 
     function markOffline(cpId) {
@@ -1154,17 +1248,30 @@
       card.className = 'cp-card';
       var pill = card.querySelector('.cp-status-pill');
       if (pill) { pill.className = 'cp-status-pill pill-offline'; pill.textContent = 'OFFLINE'; }
+      card.querySelectorAll('.c-badge').forEach(function(b) {
+        var label = b.textContent.split('·')[0].trim();
+        b.className = 'c-badge cs-Unavailable';
+        b.textContent = label + ' · —';
+      });
+      card.querySelectorAll('.btn-start, .btn-stop').forEach(function(btn) { btn.disabled = true; });
       stopDur(cpId);
       delete _activeTxnSet[cpId];
       delete _cpC1Status[cpId];
+      _offlineCps[cpId] = true;
       clearCpLive(cpId);
       updateDonut();
       onlineCount = Math.max(0, onlineCount - 1);
       updateStats();
+      if (_statusFilter) applyStatusFilter();
     }
 
     // ── Transaction history ────────────────────────────────────
     function addTransactionRow(ev) {
+      var tid = ev.transaction_id;
+      if (tid !== undefined && tid !== null) {
+        if (_countedTxnIds[tid]) return;
+        _countedTxnIds[tid] = true;
+      }
       txnCount++;
       if (ev.stop_time) _totalEnergyWh += (ev.energy_wh || 0);
       updateStats();
@@ -1182,6 +1289,7 @@
       tr.innerHTML =
         '<td class="td-bold">'   + esc(ev.cp_id||'')    + '</td>' +
         '<td class="td-mono td-blue">#' + esc(tid)      + '</td>' +
+        '<td class="td-mono td-muted">' + esc(ev.id_tag||'—') + '</td>' +
         '<td class="td-mono td-muted">' + esc(start)    + '</td>' +
         '<td class="td-mono td-muted">' + esc(stop)     + '</td>' +
         '<td class="td-green">'  + esc(kwh) + ' kWh</td>' +
