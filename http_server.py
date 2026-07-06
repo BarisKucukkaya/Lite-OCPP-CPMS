@@ -236,7 +236,17 @@ async def _handle_action(writer, body_bytes: bytes):
 
     extra = {}
     if action == "Reset":
-        extra["reset_type"] = data.get("reset_type", "Hard")
+        reset_type = (data.get("reset_type") or "Hard").strip()
+        if reset_type not in ocpp_server.VALID_RESET_TYPES:
+            await _write_json(writer, {"error": "reset_type must be 'Hard' or 'Soft'"}, 400)
+            return
+        extra["reset_type"] = reset_type
+    elif action == "RemoteStartTransaction":
+        id_tag = (data.get("id_tag") or "").strip()
+        if not id_tag:
+            await _write_json(writer, {"error": "id_tag is required"}, 400)
+            return
+        extra["id_tag"] = id_tag
 
     try:
         result = await ocpp_server.remote_action(cp_id, action, connector_id, extra=extra)

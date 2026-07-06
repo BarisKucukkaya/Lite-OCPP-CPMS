@@ -17,12 +17,16 @@ import uuid
 import datetime
 import websockets
 
-HOST  = sys.argv[1] if len(sys.argv) > 1 else "localhost"
-COUNT = int(sys.argv[2]) if len(sys.argv) > 2 else 10
-START = int(sys.argv[3]) if len(sys.argv) > 3 else 1
+SIMULATE_SOC = "--soc" in sys.argv
+_args = [a for a in sys.argv[1:] if a != "--soc"]
+
+HOST  = _args[0] if len(_args) > 0 else "localhost"
+COUNT = int(_args[1]) if len(_args) > 1 else 10
+START = int(_args[2]) if len(_args) > 2 else 1
 
 PORT               = 9000
 HEARTBEAT_INTERVAL = 20
+SOC_RAMP_SECONDS    = 300  # --soc ile %0'dan %100'e çıkış süresi (~5 dakika)
 
 
 def _now():
@@ -71,29 +75,41 @@ async def run_cp(cp_id):
             await asyncio.sleep(5)
             session["meter_wh"] = session.get("meter_wh", 0) + 55
             kwh = round(session["meter_wh"] / 1000.0, 4)
+            sampled_values = [
+                {
+                    "value": str(kwh),
+                    "measurand": "Energy.Active.Import.Register",
+                    "unit": "kWh",
+                    "context": "Sample.Periodic",
+                    "format": "Raw",
+                    "location": "Outlet",
+                },
+                {
+                    "value": "22000",
+                    "measurand": "Power.Active.Import",
+                    "unit": "W",
+                    "context": "Sample.Periodic",
+                    "format": "Raw",
+                    "location": "Outlet",
+                },
+            ]
+            if SIMULATE_SOC:
+                soc_increment = 100.0 * 5 / SOC_RAMP_SECONDS
+                session["soc"] = min(session.get("soc", 0) + soc_increment, 100)
+                sampled_values.append({
+                    "value": str(int(round(session["soc"]))),
+                    "measurand": "SoC",
+                    "unit": "Percent",
+                    "context": "Sample.Periodic",
+                    "format": "Raw",
+                    "location": "EV",
+                })
             await send_call(ws, "MeterValues", {
                 "connectorId": connector_id,
                 "transactionId": transaction_id,
                 "meterValue": [{
                     "timestamp": _now(),
-                    "sampledValue": [
-                        {
-                            "value": str(kwh),
-                            "measurand": "Energy.Active.Import.Register",
-                            "unit": "kWh",
-                            "context": "Sample.Periodic",
-                            "format": "Raw",
-                            "location": "Outlet",
-                        },
-                        {
-                            "value": "22000",
-                            "measurand": "Power.Active.Import",
-                            "unit": "W",
-                            "context": "Sample.Periodic",
-                            "format": "Raw",
-                            "location": "Outlet",
-                        },
-                    ],
+                    "sampledValue": sampled_values,
                 }],
             })
 

@@ -441,6 +441,31 @@
     @keyframes toast-in  { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: none; } }
     @keyframes toast-out { to   { opacity:0; transform: translateX(20px); } }
 
+    /* ── Özel modal (native prompt/confirm/alert bazı ortamlarda desteklenmiyor) ── */
+    #modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.6);
+      display: none; align-items: center; justify-content: center;
+      z-index: 10000;
+    }
+    #modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--card2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px 22px; width: 320px; max-width: 90vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    }
+    .modal-msg { color: var(--t1); font-size: .9rem; margin-bottom: 14px; white-space: pre-wrap; }
+    .modal-input {
+      width: 100%; padding: 8px 10px; margin-bottom: 14px; font-size: .88rem;
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--t1);
+    }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-btn {
+      padding: 7px 16px; border-radius: 6px; font-size: .84rem; cursor: pointer;
+      border: 1px solid var(--border); background: var(--card); color: var(--t1);
+    }
+    .modal-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
     /* ── Çıkış butonu ────────────────────────────────────────── */
     .btn-logout {
       margin-top: 8px;
@@ -466,6 +491,17 @@
 
   <!-- ── Toast container ───────────────────────────────────────── -->
   <div id="toast-container"></div>
+
+  <div id="modal-overlay">
+    <div class="modal-box">
+      <div class="modal-msg" id="modal-msg"></div>
+      <input type="text" class="modal-input" id="modal-input" style="display:none">
+      <div class="modal-actions">
+        <button class="modal-btn" id="modal-cancel-btn">İptal</button>
+        <button class="modal-btn primary" id="modal-ok-btn">Tamam</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Sidebar ─────────────────────────────────────────────── -->
   <aside id="sidebar">
@@ -726,6 +762,62 @@
       setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 5100);
     }
 
+    // ── Özel modal (window.prompt/confirm/alert bazı gömülü tarayıcılarda
+    //    desteklenmiyor ve throw ediyor — kendi diyaloğumuzu kullanıyoruz) ──
+    function _showModal(message, opts) {
+      opts = opts || {};
+      return new Promise(function(resolve) {
+        var overlay  = document.getElementById('modal-overlay');
+        var msgEl    = document.getElementById('modal-msg');
+        var inputEl  = document.getElementById('modal-input');
+        var cancelBtn= document.getElementById('modal-cancel-btn');
+        var okBtn    = document.getElementById('modal-ok-btn');
+
+        msgEl.textContent = message;
+        if (opts.showInput) {
+          inputEl.style.display = '';
+          inputEl.value = opts.defaultValue || '';
+        } else {
+          inputEl.style.display = 'none';
+        }
+        cancelBtn.style.display = opts.hideCancel ? 'none' : '';
+
+        function cleanup() {
+          overlay.classList.remove('open');
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+          inputEl.removeEventListener('keydown', onKeydown);
+        }
+        function onOk() {
+          cleanup();
+          resolve(opts.showInput ? inputEl.value : true);
+        }
+        function onCancel() {
+          cleanup();
+          resolve(opts.showInput ? null : false);
+        }
+        function onKeydown(e) {
+          if (e.key === 'Enter') onOk();
+          else if (e.key === 'Escape') onCancel();
+        }
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        inputEl.addEventListener('keydown', onKeydown);
+        overlay.classList.add('open');
+        if (opts.showInput) inputEl.focus();
+      });
+    }
+    function customAlert(message) {
+      return _showModal(message, { hideCancel: true });
+    }
+    function customConfirm(message) {
+      return _showModal(message, {});
+    }
+    function customPrompt(message, defaultValue) {
+      return _showModal(message, { showInput: true, defaultValue: defaultValue });
+    }
+
     // ── Logout ────────────────────────────────────────────────
     function doLogout() {
       fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
@@ -804,16 +896,18 @@
     }
 
     function deleteUser(username) {
-      if (!confirm(username + ' kullanıcısı silinsin mi?')) return;
-      fetch('/api/users', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ username: username }),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function() { showUsers(); })
-      .catch(function() {});
+      customConfirm(username + ' kullanıcısı silinsin mi?').then(function(ok) {
+        if (!ok) return;
+        fetch('/api/users', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ username: username }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function() { showUsers(); })
+        .catch(function() {});
+      });
     }
 
     // ── Giriş logları ─────────────────────────────────────────
@@ -1121,24 +1215,41 @@
     }
 
     function sendAction(cpId, action) {
-      var btns = document.querySelectorAll('#cpcard-' + cpId + ' .btn');
-      btns.forEach(function(b){ b.disabled = true; });
-      fetch('/api/action', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({cp_id: cpId, action: action, connector_id: 1})
-      })
-      .then(function(r){ return r.json(); })
-      .then(function(d){ if (d.error) console.warn(d.error); })
-      .catch(function(e){ console.error(e); })
-      .finally(function(){ btns.forEach(function(b){ b.disabled = false; }); });
+      function proceed(body) {
+        var btns = document.querySelectorAll('#cpcard-' + cpId + ' .btn');
+        btns.forEach(function(b){ b.disabled = true; });
+        fetch('/api/action', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(body)
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){ if (d.error) { console.warn(d.error); customAlert(cpId + ': ' + d.error); } })
+        .catch(function(e){ console.error(e); })
+        .finally(function(){ btns.forEach(function(b){ b.disabled = false; }); });
+      }
+
+      var body = {cp_id: cpId, action: action, connector_id: 1};
+      if (action === 'RemoteStartTransaction') {
+        customPrompt(cpId + ' için idTag girin:', '').then(function(idTag) {
+          if (idTag === null) return;
+          idTag = idTag.trim();
+          if (!idTag) { customAlert('idTag boş olamaz.'); return; }
+          body.id_tag = idTag;
+          proceed(body);
+        });
+      } else {
+        proceed(body);
+      }
     }
 
     function sendReset(cpId) {
-      if (!confirm(cpId + ' istasyonuna Hard Reset gönderilsin mi?')) return;
-      fetch('/api/action', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({cp_id: cpId, action: 'Reset', reset_type: 'Hard'})
-      }).catch(console.error);
+      customConfirm(cpId + ' istasyonuna Hard Reset gönderilsin mi?').then(function(ok) {
+        if (!ok) return;
+        fetch('/api/action', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({cp_id: cpId, action: 'Reset', reset_type: 'Hard'})
+        }).catch(console.error);
+      });
     }
 
 
@@ -1207,6 +1318,7 @@
 
       var txnRow = '';
       var powerW = c1.power_w !== undefined ? c1.power_w : null;
+      var socPercent = (c1.soc_percent !== undefined && c1.soc_percent !== null) ? c1.soc_percent : null;
       if (txnId !== null) {
         var kwh = meterWh !== null ? (meterWh/1000).toFixed(2) : '—';
         var powerStr = powerW !== null ? (powerW / 1000).toFixed(1) + ' kW' : '—';
@@ -1214,6 +1326,7 @@
           + '<span class="cp-txn-id">Txn #' + esc(String(txnId)) + '</span>'
           + '<span class="cp-txn-kwh">⚡ ' + esc(kwh) + ' kWh</span>'
           + '<span class="cp-txn-kwh" style="color:var(--blue)">〜 ' + esc(powerStr) + '</span>'
+          + (socPercent !== null ? '<span class="cp-txn-kwh">🔋 ' + esc(String(socPercent)) + '%</span>' : '')
           + '<span class="cp-txn-dur" id="dur-' + esc(cpId) + '">…</span>'
           + '</div>';
       }
@@ -1331,6 +1444,10 @@
           // Şarj başlatma onayı toast
           if (ev.action === 'RemoteStartTransactionResponse' && ev.payload && ev.payload.status === 'Accepted') {
             showToast('⚡ ' + ev.cp_id + ' şarj başlatıldı', 'var(--blue)');
+          }
+          // SoC %100 → otomatik durdurma tetiklendi
+          if (ev.action === 'AutoStopTriggered') {
+            showToast('🔋 ' + ev.cp_id + ' %100 doldu — şarj otomatik durduruluyor', 'var(--yellow)');
           }
         } else if (ev.type === 'charger_update') {
           // Yeni CP bağlantısı
