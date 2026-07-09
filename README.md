@@ -34,8 +34,9 @@ real-time web dashboard. Python asyncio backend (no framework) — vanilla HTML/
 
 ## Requirements
 
-- Python 3.6+ (developed on 3.6.9 / Ubuntu 18.04)
-- One pip dependency: `websockets==9.1`
+- Python 3.6+ (tested on 3.10; note that `websockets==9.1` fails on Python 3.10+ due to an
+  `asyncio.Lock(loop=...)` incompatibility — use `websockets>=10` in that case)
+- One pip dependency: `websockets==12.0`
 - Internet access for the browser loading the dashboard (Chart.js is loaded from
   `cdn.jsdelivr.net`; without it the rest of the dashboard still works, only the two charts
   won't render)
@@ -119,6 +120,11 @@ main.py
 event loop, so no locks are needed (cooperative multitasking). Live charger/connector state lives
 only in memory; transaction history, login log and user accounts persist to SQLite (`cpms.db`,
 gitignored) and survive a restart.
+
+`ocpp_server.py` also writes a persistent connection log to `ocpp_server.log` (gitignored) next to
+the script — every TCP connection, HTTP handshake request/failure, and charger connect/disconnect
+event, independent of the in-memory per-CP message log shown on the dashboard. Useful for
+diagnosing a charge point that fails before completing the WebSocket handshake.
 
 ## Security notes
 

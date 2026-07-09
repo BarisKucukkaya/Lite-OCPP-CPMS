@@ -20,10 +20,26 @@ Server-initiated messages (Server -> CP):
 import asyncio
 import json
 import datetime
+import logging
+import os
 import uuid
 import websockets
 import state
 import db
+
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ocpp_server.log")
+
+logging.basicConfig(
+    filename=LOG_FILE,
+    filemode="a",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+)
+# Escalate the websockets library's own handshake logger so the raw HTTP
+# request line, headers, and handshake exceptions land in the log file too.
+logging.getLogger("websockets.server").setLevel(logging.DEBUG)
+
+logger = logging.getLogger("ocpp_server")
 
 
 class OcppError(Exception):
@@ -365,6 +381,7 @@ async def handle_charger(websocket, path: str):
         "type": "log", "ts": _now(), "cp_id": cp_id,
         "direction": "SYS", "action": "Connected", "payload": {},
     })
+    logger.info("Charger '%s' completed WS handshake and registered (remote=%s)", cp_id, websocket.remote_address)
     _broadcast_charger(cp_id)
 
     try:
@@ -434,6 +451,7 @@ async def handle_charger(websocket, path: str):
             "type": "log", "ts": _now(), "cp_id": cp_id,
             "direction": "SYS", "action": "Disconnected", "payload": {},
         })
+        logger.info("Charger '%s' disconnected", cp_id)
         state.broadcast({"type": "charger_disconnect", "cp_id": cp_id})
 
 
@@ -502,11 +520,35 @@ async def remote_action(cp_id: str, action: str, connector_id: int = 1, extra: d
 # Server startup
 # ---------------------------------------------------------------------------
 
+class LoggingProtocol(websockets.WebSocketServerProtocol):
+    """Logs every inbound TCP connection and HTTP handshake attempt to disk,
+    including ones that fail before handle_charger() is ever entered."""
+
+    def connection_made(self, transport):
+        peer = transport.get_extra_info("peername")
+        logger.info("TCP connection accepted from %s", peer)
+        super().connection_made(transport)
+
+    async def process_request(self, path, request_headers):
+        logger.info(
+            "HTTP request from %s: path=%r headers=%s",
+            self.remote_address, path, dict(request_headers.raw_items()),
+        )
+        return await super().process_request(path, request_headers)
+
+
 async def run_server(host: str = "0.0.0.0", port: int = 9000):
-    async with websockets.serve(
-        handle_charger, host, port,
-        subprotocols=["ocpp1.6"],
-        ping_interval=None,
-    ):
-        print(f"  OCPP WebSocket : ws://{host}:{port}/ocpp/{{CP_ID}}")
-        await asyncio.Future()
+    logger.info("Starting OCPP WebSocket server on %s:%s", host, port)
+    try:
+        async with websockets.serve(
+            handle_charger, host, port,
+            subprotocols=["ocpp1.6"],
+            ping_interval=None,
+            create_protocol=LoggingProtocol,
+        ):
+            print(f"  OCPP WebSocket : ws://{host}:{port}/ocpp/{{CP_ID}}")
+            logger.info("OCPP WebSocket server listening on %s:%s", host, port)
+            await asyncio.Future()
+    except Exception:
+        logger.exception("OCPP WebSocket server failed to start/bind on %s:%s", host, port)
+        raise
