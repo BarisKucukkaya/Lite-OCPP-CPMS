@@ -141,6 +141,9 @@ def _handle_status_notification(cp_id: str, payload: dict) -> dict:
 
 
 def _handle_authorize(cp_id: str, payload: dict) -> dict:
+    id_tag = payload.get("idTag", "")
+    if not db.is_card_authorized(id_tag):
+        return {"idTagInfo": {"status": "Invalid"}}
     return {"idTagInfo": {"status": "Accepted"}}
 
 
@@ -149,6 +152,9 @@ def _handle_start_transaction(cp_id: str, payload: dict) -> dict:
     id_tag = payload.get("idTag", "")
     meter_start = int(payload.get("meterStart", 0))
     timestamp = payload.get("timestamp", _now())
+
+    if not db.is_card_authorized(id_tag):
+        return {"idTagInfo": {"status": "Invalid"}, "transactionId": 0}
 
     tid = state.next_transaction_id()
     state.transactions[tid] = {
@@ -170,6 +176,7 @@ def _handle_start_transaction(cp_id: str, payload: dict) -> dict:
     conn["txn_start_time"] = timestamp
     conn["_auto_stop_sent"] = False
     conn["soc_percent"] = None
+    conn["last_id_tag"] = id_tag
 
     _broadcast_charger(cp_id)
     db.upsert_transaction(tid, state.transactions[tid])

@@ -246,6 +246,9 @@ async def _handle_action(writer, body_bytes: bytes):
         if not id_tag:
             await _write_json(writer, {"error": "id_tag is required"}, 400)
             return
+        if not db.is_card_authorized(id_tag):
+            await _write_json(writer, {"error": "Bu RFID kartı sistemde kayıtlı değil"}, 400)
+            return
         extra["id_tag"] = id_tag
 
     try:
@@ -436,6 +439,46 @@ async def _handle_client(reader, writer):
                 await _write_json(writer, {"error": "Admin hesabı silinemez"}, 400)
                 return
             db.delete_user(uname)
+            await _write_json(writer, {"ok": True})
+
+        elif method == "GET" and path == "/api/cards":
+            if await _require_admin(headers, writer):
+                return
+            await _write_json(writer, db.get_cards())
+
+        elif method == "POST" and path == "/api/cards":
+            if await _require_admin(headers, writer):
+                return
+            length = int(headers.get("content-length", 0))
+            body_bytes = await asyncio.wait_for(reader.read(length), timeout=10)
+            try:
+                cdata = json.loads(body_bytes)
+            except (ValueError, TypeError):
+                await _write_json(writer, {"error": "Invalid JSON"}, 400)
+                return
+            id_tag = (cdata.get("id_tag") or "").strip()
+            label = (cdata.get("label") or "").strip()
+            if not id_tag:
+                await _write_json(writer, {"error": "idTag zorunlu"}, 400)
+                return
+            ok = db.add_card(id_tag, label)
+            if ok:
+                await _write_json(writer, {"ok": True})
+            else:
+                await _write_json(writer, {"error": "Bu kart zaten kayıtlı"}, 400)
+
+        elif method == "DELETE" and path == "/api/cards":
+            if await _require_admin(headers, writer):
+                return
+            length = int(headers.get("content-length", 0))
+            body_bytes = await asyncio.wait_for(reader.read(length), timeout=10)
+            try:
+                cdata = json.loads(body_bytes)
+            except (ValueError, TypeError):
+                await _write_json(writer, {"error": "Invalid JSON"}, 400)
+                return
+            id_tag = cdata.get("id_tag", "")
+            db.delete_card(id_tag)
             await _write_json(writer, {"ok": True})
 
         elif method == "GET" and path == "/events":

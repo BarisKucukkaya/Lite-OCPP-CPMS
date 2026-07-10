@@ -289,15 +289,35 @@
     .td-green { font-weight: 700; color: var(--green); }
     .td-blue  { font-weight: 700; color: var(--blue); }
     .td-muted { color: var(--t3); font-size: .75rem; }
-    .td-dir-IN  { color: var(--blue);   font-weight: 700; }
-    .td-dir-OUT { color: var(--green);  font-weight: 700; }
-    .td-dir-SYS { color: var(--t3);    font-weight: 700; }
-    .td-pay {
-      font-family: monospace; font-size: .71rem; color: var(--t3);
-      max-width: 280px; white-space: nowrap; overflow: hidden;
-      text-overflow: ellipsis; cursor: pointer;
+
+    /* ── Log entry boxes ────────────────────────────────────── */
+    .log-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+    .log-entry {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
     }
-    .td-pay.expanded { white-space: pre-wrap; word-break: break-all; }
+    .log-entry-hdr {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+    .log-entry-ts  { font-family: monospace; font-size: .72rem; color: var(--t3); }
+    .log-entry-cp  { font-family: monospace; font-weight: 700; color: var(--t1); font-size: .78rem; }
+    .log-entry-dir {
+      font-weight: 700; font-size: .66rem; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 4px; letter-spacing: .4px;
+    }
+    .log-entry-dir.IN  { color: var(--blue);  background: rgba(56,182,255,.12); }
+    .log-entry-dir.OUT { color: var(--green); background: rgba(16,185,129,.12); }
+    .log-entry-dir.SYS { color: var(--t3);    background: rgba(255,255,255,.05); }
+    .log-entry-action { font-weight: 700; color: var(--t1); font-size: .8rem; }
+    .log-entry-body {
+      display: flex; flex-direction: column; gap: 2px;
+      font-family: monospace; font-size: .71rem; color: var(--t3);
+    }
+    .log-entry-body .kv { display: flex; gap: 6px; }
+    .log-entry-body .k  { color: var(--t2); }
 
     .empty-row td {
       text-align: center;
@@ -375,6 +395,8 @@
 
     .cp-hb { font-size: .7rem; color: var(--t3); margin-bottom: 12px; }
     .cp-hb.stale { color: var(--red); }
+
+    .cp-status-hint { font-size: .71rem; color: var(--t3); font-style: italic; margin: -6px 0 12px; }
 
     .cp-actions { display: flex; gap: 6px; }
     .btn {
@@ -532,6 +554,9 @@
       <div class="nav-item nav-admin-only" data-page="users" onclick="showPage('users')">
         <span class="nav-icon">👥</span> Kullanıcılar
       </div>
+      <div class="nav-item nav-admin-only" data-page="cards" onclick="showPage('cards')">
+        <span class="nav-icon">💳</span> RFID Kartları
+      </div>
     </nav>
 
     <div class="sidebar-footer">
@@ -616,7 +641,12 @@
       <!-- ── İşlemler ────────────────────────────────────────── -->
       <section class="page" id="page-txns">
         <div class="card">
-          <div class="card-hdr">İşlem Geçmişi</div>
+          <div class="card-hdr">
+            İşlem Geçmişi
+            <div class="card-hdr-right">
+              <button class="clear-btn" onclick="clearTxns()">Temizle</button>
+            </div>
+          </div>
           <div class="card-scroll">
             <table class="data-table">
               <thead>
@@ -643,12 +673,7 @@
             </div>
           </div>
           <div class="logs-scroll">
-            <table class="data-table" id="log-table">
-              <thead>
-                <tr><th>Zaman</th><th>CP</th><th>Yön</th><th>Mesaj</th><th>Payload</th></tr>
-              </thead>
-              <tbody id="log-body"></tbody>
-            </table>
+            <div class="log-list" id="log-body"></div>
           </div>
         </div>
       </section>
@@ -716,6 +741,41 @@
         </div>
       </section>
 
+      <!-- ── RFID Kartları ──────────────────────────────────────── -->
+      <section class="page" id="page-cards">
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-hdr">Yeni Kart Ekle</div>
+          <div style="padding:18px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:.73rem;color:var(--t3);margin-bottom:5px;">idTag</div>
+              <input id="new-card-tag" type="text" placeholder="ör. 04A3B2C1" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.85rem;padding:8px 12px;outline:none;width:180px;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+            </div>
+            <div>
+              <div style="font-size:.73rem;color:var(--t3);margin-bottom:5px;">Etiket (opsiyonel)</div>
+              <input id="new-card-label" type="text" placeholder="ör. Ali'nin kartı" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.85rem;padding:8px 12px;outline:none;width:180px;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'" />
+            </div>
+            <button onclick="addCard()" style="padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer;">Ekle</button>
+            <div id="card-msg" style="font-size:.78rem;color:var(--red);align-self:center;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr">
+            Kayıtlı Kartlar
+            <div class="card-hdr-right">
+              <button class="clear-btn" onclick="showCards()">↺ Yenile</button>
+            </div>
+          </div>
+          <div class="card-scroll">
+            <table class="data-table">
+              <thead><tr><th>idTag</th><th>Etiket</th><th>Eklenme Tarihi</th><th></th></tr></thead>
+              <tbody id="cards-body">
+                <tr class="empty-row"><td colspan="4">Henüz kayıtlı RFID kartı yok</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -724,7 +784,7 @@
     var MAX_LOG_ROWS = 300;
     var MAX_CP_LOGS  = 200;
     var CHART_COLORS = ['#e61e14','#38b6ff','#22c55e','#f59e0b','#a78bfa','#f97316'];
-    var PAGE_TITLES  = { overview: 'Genel Bakış', stations: 'İstasyonlar', txns: 'İşlemler', logs: 'Mesaj Logu', loginlog: 'Giriş Logları', users: 'Kullanıcı Yönetimi' };
+    var PAGE_TITLES  = { overview: 'Genel Bakış', stations: 'İstasyonlar', txns: 'İşlemler', logs: 'Mesaj Logu', loginlog: 'Giriş Logları', users: 'Kullanıcı Yönetimi', cards: 'RFID Kartları' };
 
     // ── State ─────────────────────────────────────────────────
     var onlineCount    = 0;
@@ -751,6 +811,7 @@
     var _offlineCps    = {};   // {cp_id: true} — offline istasyonlar
     var _countedTxnIds = {};   // {tid: true} — çift sayım önleme
     var _statusFilter  = null; // 'available'|'charging'|'faulted'|'offline'|null
+    var _lastIdTagByCp = {};   // {cp_id: idTag} — son yetkilendiren kart, Başlat'ta yeniden sormamak için
 
     // ── Toast bildirimleri ────────────────────────────────────
     function showToast(msg, color) {
@@ -910,6 +971,82 @@
       });
     }
 
+    // ── RFID kart yönetimi ────────────────────────────────────
+    var _allCards = [];
+
+    function showCards() {
+      fetch('/api/cards', { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .then(function(rows) {
+          _allCards = rows;
+          renderCards();
+        })
+        .catch(function() {});
+    }
+
+    function renderCards() {
+      var tbody = document.getElementById('cards-body');
+      tbody.innerHTML = '';
+      if (!_allCards.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Henüz kayıtlı RFID kartı yok</td></tr>';
+        return;
+      }
+      _allCards.forEach(function(row) {
+        var tr = document.createElement('tr');
+        var ce = esc(row.id_tag);
+        tr.innerHTML =
+          '<td class="td-mono td-bold">'  + ce                        + '</td>' +
+          '<td class="td-muted">'         + esc(row.label || '—')     + '</td>' +
+          '<td class="td-mono td-muted">' + esc(row.created_at || '—') + '</td>' +
+          '<td><button onclick="deleteCard(\'' + ce + '\')" style="padding:3px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:5px;font-size:.72rem;cursor:pointer;">Sil</button></td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    function addCard() {
+      var idTag = document.getElementById('new-card-tag').value.trim();
+      var label = document.getElementById('new-card-label').value.trim();
+      var msg   = document.getElementById('card-msg');
+      msg.style.color = 'var(--red)';
+      if (!idTag) { msg.textContent = 'idTag boş olamaz'; return; }
+      msg.textContent = '';
+      fetch('/api/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ id_tag: idTag, label: label }),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.ok) {
+          document.getElementById('new-card-tag').value = '';
+          document.getElementById('new-card-label').value = '';
+          msg.style.color = 'var(--green)';
+          msg.textContent = idTag + ' eklendi';
+          showCards();
+          setTimeout(function() { msg.textContent = ''; }, 3000);
+        } else {
+          msg.textContent = d.error || 'Hata';
+        }
+      })
+      .catch(function() { msg.textContent = 'Bağlantı hatası'; });
+    }
+
+    function deleteCard(idTag) {
+      customConfirm(idTag + ' kartı silinsin mi?').then(function(ok) {
+        if (!ok) return;
+        fetch('/api/cards', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ id_tag: idTag }),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function() { showCards(); })
+        .catch(function() {});
+      });
+    }
+
     // ── Giriş logları ─────────────────────────────────────────
     function showLoginLog() {
       var q = (document.getElementById('loginlog-search') || {}).value || '';
@@ -966,6 +1103,7 @@
       document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
       if (page === 'loginlog') showLoginLog();
       if (page === 'users')    showUsers();
+      if (page === 'cards')    showCards();
     }
 
     // ── Stats update ──────────────────────────────────────────
@@ -1154,20 +1292,31 @@
       setLogFilter(cpId);
     }
 
-    // ── Log table ──────────────────────────────────────────────
+    // ── Log entry boxes ─────────────────────────────────────────
+    function _payloadLines(payload) {
+      var keys = payload ? Object.keys(payload) : [];
+      if (!keys.length) return '<div class="kv"><span class="k">—</span></div>';
+      return keys.map(function(k) {
+        var v = payload[k];
+        var vStr = (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v);
+        return '<div class="kv"><span class="k">' + esc(k) + ':</span><span>' + esc(vStr) + '</span></div>';
+      }).join('');
+    }
+
     function _prependLog(ev) {
-      var tbody = document.getElementById('log-body');
-      var payStr = JSON.stringify(ev.payload || {});
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="td-mono td-muted">' + esc(fmtTs(ev.ts)) + '</td>' +
-        '<td class="td-mono td-bold">'  + esc(ev.cp_id||'') + '</td>' +
-        '<td class="td-dir-' + esc(ev.direction||'') + '">' + esc(ev.direction||'') + '</td>' +
-        '<td class="td-bold">'          + esc(ev.action||'') + '</td>' +
-        '<td class="td-pay" title="'   + esc(payStr) + '">' + esc(payStr) + '</td>';
-      tr.querySelector('.td-pay').addEventListener('click', function() { this.classList.toggle('expanded'); });
-      tbody.prepend(tr);
-      while (tbody.children.length > MAX_LOG_ROWS) tbody.removeChild(tbody.lastChild);
+      var container = document.getElementById('log-body');
+      var div = document.createElement('div');
+      div.className = 'log-entry';
+      div.innerHTML =
+        '<div class="log-entry-hdr">' +
+          '<span class="log-entry-ts">' + esc(fmtTs(ev.ts)) + '</span>' +
+          '<span class="log-entry-cp">' + esc(ev.cp_id||'') + '</span>' +
+          '<span class="log-entry-dir ' + esc(ev.direction||'') + '">' + esc(ev.direction||'') + '</span>' +
+          '<span class="log-entry-action">' + esc(ev.action||'') + '</span>' +
+        '</div>' +
+        '<div class="log-entry-body">' + _payloadLines(ev.payload) + '</div>';
+      container.prepend(div);
+      while (container.children.length > MAX_LOG_ROWS) container.removeChild(container.lastChild);
     }
 
     function addLogRow(ev) {
@@ -1214,22 +1363,44 @@
         + (stale ? '⚠ Heartbeat kesildi: ' : '♥ Son HB: ') + fmtTs(ts) + '</div>';
     }
 
+    var STATUS_HINTS = {
+      Preparing:   'Preparing → kart okutulması bekleniyor',
+      SuspendedEV: 'SuspendedEV → yetkilendirildi, araç şarja başlamayı bekliyor',
+    };
+    function statusHintHtml(status) {
+      var hint = STATUS_HINTS[status];
+      return hint ? '<div class="cp-status-hint">' + esc(hint) + '</div>' : '';
+    }
+
     function sendAction(cpId, action) {
       function proceed(body) {
-        var btns = document.querySelectorAll('#cpcard-' + cpId + ' .btn');
+        var btns = document.querySelectorAll('#cpcard-' + cpId + ' .btn-start, #cpcard-' + cpId + ' .btn-stop');
         btns.forEach(function(b){ b.disabled = true; });
         fetch('/api/action', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify(body)
         })
         .then(function(r){ return r.json(); })
-        .then(function(d){ if (d.error) { console.warn(d.error); customAlert(cpId + ': ' + d.error); } })
-        .catch(function(e){ console.error(e); })
-        .finally(function(){ btns.forEach(function(b){ b.disabled = false; }); });
+        .then(function(d){
+          if (d.error) {
+            console.warn(d.error);
+            customAlert(cpId + ': ' + d.error);
+            btns.forEach(function(b){ b.disabled = false; });
+          }
+        })
+        .catch(function(e){
+          console.error(e);
+          btns.forEach(function(b){ b.disabled = false; });
+        });
       }
 
       var body = {cp_id: cpId, action: action, connector_id: 1};
       if (action === 'RemoteStartTransaction') {
+        if (_lastIdTagByCp[cpId]) {
+          body.id_tag = _lastIdTagByCp[cpId];
+          proceed(body);
+          return;
+        }
         customPrompt(cpId + ' için idTag girin:', '').then(function(idTag) {
           if (idTag === null) return;
           idTag = idTag.trim();
@@ -1290,6 +1461,8 @@
       delete _offlineCps[cpId];
 
       var c1      = (ev.connectors && ev.connectors['1']) ? ev.connectors['1'] : {};
+      if (c1.last_id_tag) _lastIdTagByCp[cpId] = c1.last_id_tag;
+      else delete _lastIdTagByCp[cpId];
       var status  = c1.status || 'Unknown';
       var txnId   = c1.transaction_id !== undefined ? c1.transaction_id : null;
       var meterWh = c1.meter_latest_wh !== undefined ? c1.meter_latest_wh : null;
@@ -1311,8 +1484,7 @@
 
       card.className = 'cp-card' + (fault ? ' faulted' : txnId !== null ? ' charging' : ' online');
 
-      var ACTIVE = ['Charging','Preparing','Finishing','SuspendedEV','SuspendedEVSE'];
-      var active = ACTIVE.indexOf(status) !== -1;
+      var active = txnId !== null;
       var sd = active ? ' disabled' : '';
       var pd = active ? '' : ' disabled';
 
@@ -1341,6 +1513,7 @@
           + '<span class="cp-status-pill pill-online">ONLINE</span>'
         + '</div>'
         + '<div class="cp-connectors">' + connBadges(ev.connectors) + '</div>'
+        + statusHintHtml(status)
         + txnRow
         + heartbeatHtml(ev.last_heartbeat)
         + '<div class="cp-actions">'
@@ -1430,6 +1603,14 @@
       if (_barLabels.length > 10) { _barLabels.shift(); _barDataArr.shift(); }
 
       document.getElementById('nav-txn-count').textContent = String(txnCount);
+    }
+
+    function clearTxns() {
+      customConfirm('İşlem listesi temizlensin mi? (Sadece görünüm — veritabanı etkilenmez)').then(function(ok) {
+        if (!ok) return;
+        document.getElementById('txn-body').innerHTML =
+          '<tr class="empty-row"><td colspan="7">Henüz tamamlanmış işlem yok</td></tr>';
+      });
     }
 
     // ── SSE ───────────────────────────────────────────────────

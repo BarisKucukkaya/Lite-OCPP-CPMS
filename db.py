@@ -5,6 +5,7 @@ Tablolar:
   transactions — OCPP işlem kayıtları (sunucu yeniden başlasa kaybolmaz)
   login_log    — giriş denemeleri (kullanıcı, IP, zaman, başarı)
   users        — admin tarafından yönetilen normal kullanıcı hesapları
+  rfid_cards   — şarj için yetkili RFID kartları (idTag listesi)
 
 Senkron sqlite3 çağrıları — tek asyncio event loop'ta milisaniye sürer, sorun yok.
 """
@@ -49,6 +50,12 @@ def init():
         CREATE TABLE IF NOT EXISTS users (
             username   TEXT PRIMARY KEY,
             password   TEXT NOT NULL,
+            created_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS rfid_cards (
+            id_tag     TEXT PRIMARY KEY,
+            label      TEXT,
             created_at TEXT
         );
     """)
@@ -163,6 +170,51 @@ def delete_user(username: str):
     conn.execute("DELETE FROM users WHERE username = ?", (username,))
     conn.commit()
     conn.close()
+
+
+def get_cards():
+    """Tüm yetkili RFID kartlarını döndür."""
+    conn = _connect()
+    rows = conn.execute(
+        "SELECT id_tag, label, created_at FROM rfid_cards ORDER BY created_at DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def add_card(id_tag: str, label: str) -> bool:
+    """Yeni yetkili RFID kartı ekle. Kart zaten varsa False döner."""
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    conn = _connect()
+    try:
+        conn.execute(
+            "INSERT INTO rfid_cards (id_tag, label, created_at) VALUES (?, ?, ?)",
+            (id_tag, label, now),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
+
+
+def delete_card(id_tag: str):
+    """Yetkili RFID kartını sil."""
+    conn = _connect()
+    conn.execute("DELETE FROM rfid_cards WHERE id_tag = ?", (id_tag,))
+    conn.commit()
+    conn.close()
+
+
+def is_card_authorized(id_tag: str) -> bool:
+    """idTag rfid_cards tablosunda kayıtlı mı?"""
+    conn = _connect()
+    row = conn.execute(
+        "SELECT 1 FROM rfid_cards WHERE id_tag = ?", (id_tag,)
+    ).fetchone()
+    conn.close()
+    return row is not None
 
 
 def get_login_log(limit: int = 200, username_filter: str = ""):
