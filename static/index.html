@@ -409,7 +409,7 @@
     .btn-stop:hover:not(:disabled)  { background: var(--red);   color: #fff; }
     .btn-reset { background: rgba(249,115,22,.12); color: var(--orange); border: 1px solid rgba(249,115,22,.25); }
     .btn-reset:hover:not(:disabled) { background: var(--orange); color: #fff; }
-    .btn-log   { background: rgba(255,255,255,.05); color: var(--t2);   border: 1px solid var(--border); flex: 0; padding: 7px 10px; }
+    .btn-log   { background: rgba(255,255,255,.05); color: var(--t2);   border: 1px solid var(--border); }
     .btn-log:hover { background: rgba(255,255,255,.09); color: var(--t1); }
     .btn:disabled { opacity: .3; cursor: not-allowed; }
 
@@ -419,7 +419,7 @@
     }
 
     /* ── Log filter ──────────────────────────────────────────── */
-    #log-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+    #log-filter-bar, .chip-bar { display: flex; gap: 6px; flex-wrap: wrap; }
     .filter-chip {
       padding: 3px 11px; border: 1px solid var(--border); border-radius: 20px;
       font-size: .7rem; font-weight: 600; cursor: pointer;
@@ -434,6 +434,24 @@
       cursor: pointer; background: transparent; color: var(--t3);
     }
     .clear-btn:hover { background: rgba(255,255,255,.05); color: var(--t1); }
+
+    #log-action-filter {
+      padding: 3px 10px; font-size: .72rem; font-weight: 600;
+      border: 1px solid var(--border); border-radius: 20px;
+      background: var(--card); color: var(--t3); cursor: pointer;
+    }
+    #log-action-filter:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Combobox (yazarak + kaydırarak arama) ──────────────────── */
+    .combo-wrap { position: relative; }
+    .combo-dropdown {
+      display: none; position: absolute; top: 100%; left: 0; right: 0;
+      max-height: 220px; overflow-y: auto; background: var(--card2);
+      border: 1px solid var(--border); border-radius: 6px; margin-top: 4px;
+      z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    }
+    .combo-option { padding: 6px 10px; font-size: .8rem; color: var(--t1); cursor: pointer; }
+    .combo-option:hover { background: rgba(255,255,255,.06); }
 
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
@@ -481,6 +499,11 @@
       background: var(--card); border: 1px solid var(--border); border-radius: 6px;
       color: var(--t1);
     }
+    .modal-select {
+      width: 100%; padding: 8px 10px; margin-bottom: 14px; font-size: .88rem;
+      background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--t1);
+    }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
     .modal-btn {
       padding: 7px 16px; border-radius: 6px; font-size: .84rem; cursor: pointer;
@@ -518,6 +541,7 @@
     <div class="modal-box">
       <div class="modal-msg" id="modal-msg"></div>
       <input type="text" class="modal-input" id="modal-input" style="display:none">
+      <select class="modal-select" id="modal-select" style="display:none"></select>
       <div class="modal-actions">
         <button class="modal-btn" id="modal-cancel-btn">İptal</button>
         <button class="modal-btn primary" id="modal-ok-btn">Tamam</button>
@@ -543,7 +567,6 @@
       </div>
       <div class="nav-item" data-page="txns" onclick="showPage('txns')">
         <span class="nav-icon">📄</span> İşlemler
-        <span class="nav-badge" id="nav-txn-count">0</span>
       </div>
       <div class="nav-item" data-page="logs" onclick="showPage('logs')">
         <span class="nav-icon">📨</span> Mesaj Logu
@@ -644,6 +667,9 @@
           <div class="card-hdr">
             İşlem Geçmişi
             <div class="card-hdr-right">
+              <div id="txn-filter-bar" class="chip-bar">
+                <button class="filter-chip active" data-cp="__all__" onclick="setTxnCpFilter(null)">Tümü</button>
+              </div>
               <button class="clear-btn" onclick="clearTxns()">Temizle</button>
             </div>
           </div>
@@ -669,6 +695,26 @@
               <div id="log-filter-bar">
                 <button class="filter-chip active" data-cp="__all__" onclick="setLogFilter(null)">Tümü</button>
               </div>
+              <select id="log-action-filter" onchange="setActionFilter(this.value || null)">
+                <option value="">Tüm Mesaj Türleri</option>
+                <option value="BootNotification">BootNotification</option>
+                <option value="Heartbeat">Heartbeat</option>
+                <option value="StatusNotification">StatusNotification</option>
+                <option value="Authorize">Authorize</option>
+                <option value="StartTransaction">StartTransaction</option>
+                <option value="StopTransaction">StopTransaction</option>
+                <option value="MeterValues">MeterValues</option>
+                <option value="DiagnosticsStatusNotification">DiagnosticsStatusNotification</option>
+                <option value="FirmwareStatusNotification">FirmwareStatusNotification</option>
+                <option value="RemoteStartTransaction">RemoteStartTransaction</option>
+                <option value="RemoteStopTransaction">RemoteStopTransaction</option>
+                <option value="Reset">Reset</option>
+                <option value="TriggerMessage">TriggerMessage</option>
+                <option value="Connected">Connected</option>
+                <option value="Disconnected">Disconnected</option>
+                <option value="AutoStopTriggered">AutoStopTriggered</option>
+                <option value="AutoStopFailed">AutoStopFailed</option>
+              </select>
               <button class="clear-btn" onclick="clearLogs()">Temizle</button>
             </div>
           </div>
@@ -684,19 +730,22 @@
           <div class="card-hdr">
             Giriş Logları
             <div class="card-hdr-right">
-              <input id="loginlog-search" type="text" placeholder="Kullanıcı ara…"
-                style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.8rem;padding:5px 10px;outline:none;width:160px;"
-                oninput="showLoginLog()" />
+              <div class="combo-wrap">
+                <input id="loginlog-search" type="text" placeholder="Kullanıcı ara…" autocomplete="off"
+                  style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.8rem;padding:5px 10px;outline:none;width:160px;"
+                  oninput="onLoginLogSearchInput()" onfocus="openLoginLogDropdown()" onkeydown="onLoginLogSearchKeydown(event)" />
+                <div id="loginlog-dropdown" class="combo-dropdown"></div>
+              </div>
               <button class="clear-btn" onclick="showLoginLog()">↺ Yenile</button>
             </div>
           </div>
           <div class="card-scroll">
             <table class="data-table">
               <thead>
-                <tr><th>Tarih / Saat</th><th>Kullanıcı</th><th>IP Adresi</th></tr>
+                <tr><th>Tarih</th><th>Giriş Saati</th><th>Çıkış Saati</th><th>Kullanıcı</th><th>IP Adresi</th></tr>
               </thead>
               <tbody id="loginlog-body">
-                <tr class="empty-row"><td colspan="3">Henüz giriş kaydı yok</td></tr>
+                <tr class="empty-row"><td colspan="5">Henüz giriş kaydı yok</td></tr>
               </tbody>
             </table>
           </div>
@@ -762,6 +811,9 @@
           <div class="card-hdr">
             Kayıtlı Kartlar
             <div class="card-hdr-right">
+              <input id="card-search" type="text" placeholder="idTag ara…"
+                style="background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-size:.8rem;padding:5px 10px;outline:none;width:160px;"
+                oninput="renderCards()" />
               <button class="clear-btn" onclick="showCards()">↺ Yenile</button>
             </div>
           </div>
@@ -788,13 +840,14 @@
 
     // ── State ─────────────────────────────────────────────────
     var onlineCount    = 0;
-    var txnCount       = 0;
+    var _txnCpFilter   = null;
     var _totalEnergyWh = 0;
     var _activeTxnSet  = {};
     var _cpC1Status    = {};
     var _cpLogs        = {};
     var _allLogs       = [];
     var _logFilter     = null;
+    var _actionFilter  = null;
     var _durationTimers= {};
     var _activePage    = 'overview';
     var _cpColors      = {};
@@ -831,6 +884,7 @@
         var overlay  = document.getElementById('modal-overlay');
         var msgEl    = document.getElementById('modal-msg');
         var inputEl  = document.getElementById('modal-input');
+        var selectEl = document.getElementById('modal-select');
         var cancelBtn= document.getElementById('modal-cancel-btn');
         var okBtn    = document.getElementById('modal-ok-btn');
 
@@ -840,6 +894,14 @@
           inputEl.value = opts.defaultValue || '';
         } else {
           inputEl.style.display = 'none';
+        }
+        if (opts.showSelect) {
+          selectEl.style.display = '';
+          selectEl.innerHTML = (opts.selectOptions || []).map(function(o) {
+            return '<option value="' + esc(o.value) + '">' + esc(o.label) + '</option>';
+          }).join('');
+        } else {
+          selectEl.style.display = 'none';
         }
         cancelBtn.style.display = opts.hideCancel ? 'none' : '';
 
@@ -851,11 +913,13 @@
         }
         function onOk() {
           cleanup();
-          resolve(opts.showInput ? inputEl.value : true);
+          if (opts.showSelect) resolve(selectEl.value);
+          else resolve(opts.showInput ? inputEl.value : true);
         }
         function onCancel() {
           cleanup();
-          resolve(opts.showInput ? null : false);
+          if (opts.showSelect) resolve(null);
+          else resolve(opts.showInput ? null : false);
         }
         function onKeydown(e) {
           if (e.key === 'Enter') onOk();
@@ -877,6 +941,9 @@
     }
     function customPrompt(message, defaultValue) {
       return _showModal(message, { showInput: true, defaultValue: defaultValue });
+    }
+    function customSelect(message, options) {
+      return _showModal(message, { showSelect: true, selectOptions: options });
     }
 
     // ── Logout ────────────────────────────────────────────────
@@ -918,9 +985,11 @@
       rows.forEach(function(row) {
         var tr = document.createElement('tr');
         var ce = esc(row.username);
+        var createdDT = fmtDateHM(row.created_at);
+        var createdStr = createdDT ? (createdDT.date + ' ' + createdDT.hm) : '—';
         tr.innerHTML =
-          '<td class="td-bold">'          + ce                          + '</td>' +
-          '<td class="td-mono td-muted">' + esc(row.created_at || '—') + '</td>' +
+          '<td class="td-bold">'          + ce                + '</td>' +
+          '<td class="td-mono td-muted">' + esc(createdStr)   + '</td>' +
           '<td class="td-muted">Kullanıcı</td>' +
           '<td><button onclick="deleteUser(\'' + ce + '\')" style="padding:3px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:5px;font-size:.72rem;cursor:pointer;">Sil</button></td>';
         tbody.appendChild(tr);
@@ -985,19 +1054,23 @@
     }
 
     function renderCards() {
+      var q = ((document.getElementById('card-search') || {}).value || '').toLowerCase();
+      var rows = q ? _allCards.filter(function(r) { return (r.id_tag||'').toLowerCase().indexOf(q) !== -1; }) : _allCards;
       var tbody = document.getElementById('cards-body');
       tbody.innerHTML = '';
-      if (!_allCards.length) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Henüz kayıtlı RFID kartı yok</td></tr>';
+      if (!rows.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="4">' + (q ? 'Kart bulunamadı' : 'Henüz kayıtlı RFID kartı yok') + '</td></tr>';
         return;
       }
-      _allCards.forEach(function(row) {
+      rows.forEach(function(row) {
         var tr = document.createElement('tr');
         var ce = esc(row.id_tag);
+        var createdDT = fmtDateHM(row.created_at);
+        var createdStr = createdDT ? (createdDT.date + ' ' + createdDT.hm) : '—';
         tr.innerHTML =
-          '<td class="td-mono td-bold">'  + ce                        + '</td>' +
-          '<td class="td-muted">'         + esc(row.label || '—')     + '</td>' +
-          '<td class="td-mono td-muted">' + esc(row.created_at || '—') + '</td>' +
+          '<td class="td-mono td-bold">'  + ce                    + '</td>' +
+          '<td class="td-muted">'         + esc(row.label || '—') + '</td>' +
+          '<td class="td-mono td-muted">' + esc(createdStr)       + '</td>' +
           '<td><button onclick="deleteCard(\'' + ce + '\')" style="padding:3px 10px;background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);border-radius:5px;font-size:.72rem;cursor:pointer;">Sil</button></td>';
         tbody.appendChild(tr);
       });
@@ -1048,6 +1121,64 @@
     }
 
     // ── Giriş logları ─────────────────────────────────────────
+    function fmtDateHM(iso) {
+      if (!iso) return null;
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
+      function pad(n){ return n < 10 ? '0'+n : ''+n; }
+      return {
+        date: pad(d.getDate()) + '.' + pad(d.getMonth()+1) + '.' + d.getFullYear(),
+        hm:   pad(d.getHours()) + ':' + pad(d.getMinutes()),
+      };
+    }
+
+    var _loginLogUsers = [];
+
+    function _rememberLoginLogUser(username) {
+      if (username && _loginLogUsers.indexOf(username) === -1) _loginLogUsers.push(username);
+    }
+
+    function renderLoginLogDropdown(filterText) {
+      var box = document.getElementById('loginlog-dropdown');
+      var q = (filterText || '').toLowerCase();
+      var matches = _loginLogUsers.filter(function(u) { return u.toLowerCase().indexOf(q) !== -1; });
+      box.innerHTML = '<div class="combo-option" data-value="">— Tümü —</div>' +
+        matches.map(function(u) {
+          return '<div class="combo-option" data-value="' + esc(u) + '">' + esc(u) + '</div>';
+        }).join('');
+      box.querySelectorAll('.combo-option').forEach(function(opt) {
+        opt.onmousedown = function(e) {
+          e.preventDefault();
+          document.getElementById('loginlog-search').value = opt.dataset.value;
+          closeLoginLogDropdown();
+          showLoginLog();
+        };
+      });
+    }
+
+    function openLoginLogDropdown() {
+      renderLoginLogDropdown(document.getElementById('loginlog-search').value);
+      document.getElementById('loginlog-dropdown').style.display = 'block';
+    }
+
+    function closeLoginLogDropdown() {
+      document.getElementById('loginlog-dropdown').style.display = 'none';
+    }
+
+    function onLoginLogSearchInput() {
+      renderLoginLogDropdown(document.getElementById('loginlog-search').value);
+      document.getElementById('loginlog-dropdown').style.display = 'block';
+      showLoginLog();
+    }
+
+    function onLoginLogSearchKeydown(e) {
+      if (e.key === 'Escape') closeLoginLogDropdown();
+    }
+
+    document.getElementById('loginlog-search').addEventListener('blur', function() {
+      setTimeout(closeLoginLogDropdown, 150);
+    });
+
     function showLoginLog() {
       var q = (document.getElementById('loginlog-search') || {}).value || '';
       fetch('/api/login-log' + (q ? '?q=' + encodeURIComponent(q) : ''), { credentials: 'same-origin' })
@@ -1056,15 +1187,20 @@
           var tbody = document.getElementById('loginlog-body');
           tbody.innerHTML = '';
           if (!rows.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="3">Kayıt bulunamadı</td></tr>';
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">Kayıt bulunamadı</td></tr>';
             return;
           }
           rows.forEach(function(row) {
+            _rememberLoginLogUser(row.username);
+            var loginDT  = fmtDateHM(row.login_time);
+            var logoutDT = fmtDateHM(row.logout_time);
             var tr = document.createElement('tr');
             tr.innerHTML =
-              '<td class="td-mono td-muted">' + esc(row.login_time || '') + '</td>' +
-              '<td class="td-bold">'           + esc(row.username || '') + '</td>' +
-              '<td class="td-mono td-muted">'  + esc(row.ip || '') + '</td>';
+              '<td class="td-mono td-muted">' + esc(loginDT ? loginDT.date : '—') + '</td>' +
+              '<td class="td-mono td-muted">' + esc(loginDT ? loginDT.hm   : '—') + '</td>' +
+              '<td class="td-mono td-muted">' + esc(logoutDT ? logoutDT.hm : '—') + '</td>' +
+              '<td class="td-bold">'          + esc(row.username || '') + '</td>' +
+              '<td class="td-mono td-muted">' + esc(row.ip || '') + '</td>';
             tbody.appendChild(tr);
           });
         })
@@ -1112,7 +1248,6 @@
       document.getElementById('tb-online').textContent   = String(onlineCount);
       document.getElementById('tb-charging').textContent = String(chg);
       document.getElementById('nav-station-count').textContent = String(onlineCount);
-      document.getElementById('nav-txn-count').textContent    = String(txnCount);
       updateStatusCounts();
     }
 
@@ -1275,16 +1410,32 @@
       bar.appendChild(btn);
     }
 
+    function _baseAction(action) {
+      return String(action || '').replace(/(Response|Error)$/, '');
+    }
+
+    function _renderLogFilters() {
+      var logs = _logFilter ? (_cpLogs[_logFilter] || []) : _allLogs;
+      if (_actionFilter !== null) {
+        logs = logs.filter(function(ev) { return _baseAction(ev.action) === _actionFilter; });
+      }
+      var tbody = document.getElementById('log-body');
+      tbody.innerHTML = '';
+      var start = Math.max(0, logs.length - MAX_LOG_ROWS);
+      for (var i = start; i < logs.length; i++) _prependLog(logs[i]);
+    }
+
     function setLogFilter(cpId) {
       _logFilter = cpId;
       document.querySelectorAll('.filter-chip').forEach(function(chip) {
         chip.classList.toggle('active', cpId === null ? chip.dataset.cp === '__all__' : chip.dataset.cp === cpId);
       });
-      var logs  = cpId ? (_cpLogs[cpId] || []) : _allLogs;
-      var tbody = document.getElementById('log-body');
-      tbody.innerHTML = '';
-      var start = Math.max(0, logs.length - MAX_LOG_ROWS);
-      for (var i = start; i < logs.length; i++) _prependLog(logs[i]);
+      _renderLogFilters();
+    }
+
+    function setActionFilter(action) {
+      _actionFilter = action;
+      _renderLogFilters();
     }
 
     function openCpLog(cpId) {
@@ -1320,13 +1471,14 @@
     }
 
     function addLogRow(ev) {
-      if (ev.action === 'MeterValues' || ev.action === 'MeterValuesResponse') return;
       if (!_cpLogs[ev.cp_id]) _cpLogs[ev.cp_id] = [];
       _cpLogs[ev.cp_id].push(ev);
       if (_cpLogs[ev.cp_id].length > MAX_CP_LOGS) _cpLogs[ev.cp_id].shift();
       _allLogs.push(ev);
       if (_allLogs.length > MAX_LOG_ROWS * 2) _allLogs.shift();
-      if (_logFilter === null || _logFilter === ev.cp_id) _prependLog(ev);
+      var cpMatch     = _logFilter === null || _logFilter === ev.cp_id;
+      var actionMatch = _actionFilter === null || _baseAction(ev.action) === _actionFilter;
+      if (cpMatch && actionMatch) _prependLog(ev);
     }
 
     function clearLogs() {
@@ -1420,6 +1572,29 @@
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({cp_id: cpId, action: 'Reset', reset_type: 'Hard'})
         }).catch(console.error);
+      });
+    }
+
+    function sendTrigger(cpId) {
+      customSelect(cpId + ' için tetiklenecek mesajı seçin:', [
+        {value: 'BootNotification', label: 'BootNotification'},
+        {value: 'Heartbeat', label: 'Heartbeat'},
+        {value: 'StatusNotification', label: 'StatusNotification'},
+        {value: 'MeterValues', label: 'MeterValues'},
+        {value: 'DiagnosticsStatusNotification', label: 'DiagnosticsStatusNotification'},
+        {value: 'FirmwareStatusNotification', label: 'FirmwareStatusNotification'},
+      ]).then(function(choice) {
+        if (!choice) return;
+        fetch('/api/action', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({cp_id: cpId, action: 'TriggerMessage', requested_message: choice, connector_id: 1})
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.error) customAlert(cpId + ': ' + d.error);
+          else showToast('⚡ ' + cpId + ': ' + choice + ' tetiklendi', 'var(--blue)');
+        })
+        .catch(console.error);
       });
     }
 
@@ -1519,8 +1694,9 @@
         + '<div class="cp-actions">'
           + '<button class="btn btn-start"' + sd + ' onclick="sendAction(\'' + ce + '\',\'RemoteStartTransaction\')">▶ Başlat</button>'
           + '<button class="btn btn-stop"'  + pd + ' onclick="sendAction(\'' + ce + '\',\'RemoteStopTransaction\')">■ Durdur</button>'
-          + '<button class="btn btn-reset" onclick="sendReset(\'' + ce + '\')">⟳</button>'
-          + '<button class="btn btn-log" onclick="openCpLog(\'' + ce + '\')">📋</button>'
+          + '<button class="btn btn-reset" onclick="sendReset(\'' + ce + '\')">⟳ Reset</button>'
+          + '<button class="btn btn-trigger" onclick="sendTrigger(\'' + ce + '\')" title="Trigger Message">⚡ Tetikle</button>'
+          + '<button class="btn btn-log" onclick="openCpLog(\'' + ce + '\')">📋 Log</button>'
         + '</div>';
 
       if (txnId !== null && txnTs) startDur(cpId, txnTs);
@@ -1552,57 +1728,104 @@
     }
 
     // ── Transaction history ────────────────────────────────────
+    function addTxnFilterChip(cpId) {
+      if (!cpId) return;
+      if (document.querySelector('#txn-filter-bar .filter-chip[data-cp="'+cpId+'"]')) return;
+      var bar = document.getElementById('txn-filter-bar');
+      var btn = document.createElement('button');
+      btn.className = 'filter-chip';
+      btn.dataset.cp = cpId;
+      btn.textContent = cpId;
+      btn.onclick = function() { setTxnCpFilter(cpId); };
+      bar.appendChild(btn);
+    }
+
+    function _txnRowCellsHtml(ev) {
+      var kwh   = typeof ev.energy_wh === 'number' ? (ev.energy_wh/1000).toFixed(2) : '—';
+      var start = ev.start_time ? fmtTs(ev.start_time) : '—';
+      var stop  = ev.stop_time  ? fmtTs(ev.stop_time)  : '—';
+      var tid   = String(ev.transaction_id || '');
+      return {
+        full: '<td class="td-bold">'   + esc(ev.cp_id||'')    + '</td>' +
+              '<td class="td-mono td-blue">#' + esc(tid)      + '</td>' +
+              '<td class="td-mono td-muted">' + esc(ev.id_tag||'—') + '</td>' +
+              '<td class="td-mono td-muted">' + esc(start)    + '</td>' +
+              '<td class="td-mono td-muted">' + esc(stop)     + '</td>' +
+              '<td class="td-green">'  + esc(kwh) + ' kWh</td>' +
+              '<td class="td-muted">'  + esc(ev.reason||'')   + '</td>',
+        mini: '<td class="td-bold">'  + esc(ev.cp_id||'')   + '</td>' +
+              '<td class="td-mono td-blue">#' + esc(tid)    + '</td>' +
+              '<td class="td-mono td-muted">' + esc(stop)   + '</td>' +
+              '<td class="td-green">' + esc(kwh) + ' kWh</td>' +
+              '<td class="td-muted">' + esc(ev.reason||'')  + '</td>',
+        tid: tid,
+        kwh: kwh,
+      };
+    }
+
+    function renderTxnTable(txns) {
+      var tbody = document.getElementById('txn-body');
+      tbody.innerHTML = '';
+      if (!txns.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">Bu filtre için işlem bulunamadı</td></tr>';
+        return;
+      }
+      txns.slice().reverse().forEach(function(ev) {
+        addTxnFilterChip(ev.cp_id);
+        var tr = document.createElement('tr');
+        tr.innerHTML = _txnRowCellsHtml(ev).full;
+        tbody.prepend(tr);
+      });
+    }
+
+    function setTxnCpFilter(cpId) {
+      _txnCpFilter = cpId;
+      document.querySelectorAll('#txn-filter-bar .filter-chip').forEach(function(chip) {
+        chip.classList.toggle('active', cpId === null ? chip.dataset.cp === '__all__' : chip.dataset.cp === cpId);
+      });
+      var url = '/api/transactions' + (cpId ? ('?cp_id=' + encodeURIComponent(cpId)) : '');
+      fetch(url, { credentials: 'same-origin' })
+        .then(function(r){ return r.json(); })
+        .then(renderTxnTable)
+        .catch(console.error);
+    }
+
     function addTransactionRow(ev) {
       var tid = ev.transaction_id;
       if (tid !== undefined && tid !== null) {
         if (_countedTxnIds[tid]) return;
         _countedTxnIds[tid] = true;
       }
-      txnCount++;
       if (ev.stop_time) _totalEnergyWh += (ev.energy_wh || 0);
       updateStats();
+      addTxnFilterChip(ev.cp_id);
 
-      var kwh   = typeof ev.energy_wh === 'number' ? (ev.energy_wh/1000).toFixed(2) : '—';
-      var start = ev.start_time ? fmtTs(ev.start_time) : '—';
-      var stop  = ev.stop_time  ? fmtTs(ev.stop_time)  : '—';
-      var tid   = String(ev.transaction_id || '');
+      var cells = _txnRowCellsHtml(ev);
 
-      // Full txn table
-      var tbody = document.getElementById('txn-body');
-      var emptyRow = tbody.querySelector('.empty-row');
-      if (emptyRow) emptyRow.remove();
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td class="td-bold">'   + esc(ev.cp_id||'')    + '</td>' +
-        '<td class="td-mono td-blue">#' + esc(tid)      + '</td>' +
-        '<td class="td-mono td-muted">' + esc(ev.id_tag||'—') + '</td>' +
-        '<td class="td-mono td-muted">' + esc(start)    + '</td>' +
-        '<td class="td-mono td-muted">' + esc(stop)     + '</td>' +
-        '<td class="td-green">'  + esc(kwh) + ' kWh</td>' +
-        '<td class="td-muted">'  + esc(ev.reason||'')   + '</td>';
-      tbody.prepend(tr);
-      while (tbody.children.length > 50) tbody.removeChild(tbody.lastChild);
+      // Full txn table — only if it matches the active station filter
+      if (_txnCpFilter === null || _txnCpFilter === ev.cp_id) {
+        var tbody = document.getElementById('txn-body');
+        var emptyRow = tbody.querySelector('.empty-row');
+        if (emptyRow) emptyRow.remove();
+        var tr = document.createElement('tr');
+        tr.innerHTML = cells.full;
+        tbody.prepend(tr);
+        while (tbody.children.length > 50) tbody.removeChild(tbody.lastChild);
+      }
 
-      // Overview mini table (last 5)
+      // Overview mini table (last 5) — always global, unaffected by station filter
       var ovBody = document.getElementById('ov-txn-body');
       var ovEmpty = ovBody.querySelector('.empty-row');
       if (ovEmpty) ovEmpty.remove();
       var tr2 = document.createElement('tr');
-      tr2.innerHTML =
-        '<td class="td-bold">'  + esc(ev.cp_id||'')   + '</td>' +
-        '<td class="td-mono td-blue">#' + esc(tid)    + '</td>' +
-        '<td class="td-mono td-muted">' + esc(stop)   + '</td>' +
-        '<td class="td-green">' + esc(kwh) + ' kWh</td>' +
-        '<td class="td-muted">' + esc(ev.reason||'')  + '</td>';
+      tr2.innerHTML = cells.mini;
       ovBody.prepend(tr2);
       while (ovBody.children.length > 5) ovBody.removeChild(ovBody.lastChild);
 
       // Update bar chart (overview bar chart — reuse line chart for now, bar is separate)
-      _barLabels.push('#' + tid);
-      _barDataArr.push(parseFloat(kwh));
+      _barLabels.push('#' + cells.tid);
+      _barDataArr.push(parseFloat(cells.kwh));
       if (_barLabels.length > 10) { _barLabels.shift(); _barDataArr.shift(); }
-
-      document.getElementById('nav-txn-count').textContent = String(txnCount);
     }
 
     function clearTxns() {

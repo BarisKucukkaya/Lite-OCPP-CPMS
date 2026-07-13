@@ -9,7 +9,7 @@ Endpoints (auth gerektirmeyenler):
 Endpoints (session cookie gerektirir):
   GET  /                   -> static/index.html
   GET  /api/chargers       -> current charger state as JSON
-  GET  /api/transactions   -> last 50 transactions as JSON
+  GET  /api/transactions   -> last 50 transactions as JSON (optional ?cp_id= filter)
   GET  /api/login-log      -> giriş logları as JSON
   GET  /events             -> SSE stream (text/event-stream)
   POST /api/action         -> send RemoteStart/Stop/Reset to a charge point
@@ -209,9 +209,11 @@ async def _serve_sse(writer):
         state.remove_sse_client(q)
 
 
-async def _serve_transactions(writer):
+async def _serve_transactions(writer, cp_id_filter: str = ""):
+    items = [(k, v) for k, v in state.transactions.items()
+             if not cp_id_filter or v.get("cp_id") == cp_id_filter]
     txns = sorted(
-        [dict(v, transaction_id=k) for k, v in state.transactions.items()],
+        [dict(v, transaction_id=k) for k, v in items],
         key=lambda t: t.get("start_time", ""),
         reverse=True,
     )
@@ -229,7 +231,7 @@ async def _handle_action(writer, body_bytes: bytes):
     action = data.get("action", "")
     connector_id = int(data.get("connector_id", 1))
 
-    allowed = ("RemoteStartTransaction", "RemoteStopTransaction", "Reset")
+    allowed = ("RemoteStartTransaction", "RemoteStopTransaction", "Reset", "TriggerMessage")
     if action not in allowed:
         await _write_json(writer, {"error": "Unknown action"}, 400)
         return
@@ -241,6 +243,12 @@ async def _handle_action(writer, body_bytes: bytes):
             await _write_json(writer, {"error": "reset_type must be 'Hard' or 'Soft'"}, 400)
             return
         extra["reset_type"] = reset_type
+    elif action == "TriggerMessage":
+        requested_message = (data.get("requested_message") or "").strip()
+        if requested_message not in ocpp_server.VALID_MESSAGE_TRIGGERS:
+            await _write_json(writer, {"error": "Invalid requested_message"}, 400)
+            return
+        extra["requested_message"] = requested_message
     elif action == "RemoteStartTransaction":
         id_tag = (data.get("id_tag") or "").strip()
         if not id_tag:
@@ -279,13 +287,14 @@ async def _handle_login(writer, body_bytes: bytes, ip: str):
 
     if role is not None:
         token = str(uuid.uuid4())
+        login_log_id = db.log_login(username, ip, success=True)
         _sessions[token] = {
             "username": username,
             "role": role,
             "created_at": datetime.datetime.utcnow(),
             "ip": ip,
+            "login_log_id": login_log_id,
         }
-        db.log_login(username, ip, success=True)
         cookie = "session={}; HttpOnly; Path=/; SameSite=Lax".format(token)
         body = json.dumps({"ok": True}, ensure_ascii=False).encode()
         writer.write(
@@ -306,7 +315,9 @@ async def _handle_login(writer, body_bytes: bytes, ip: str):
 async def _handle_logout(writer, headers: dict):
     token = _parse_session_token(headers)
     if token:
-        _sessions.pop(token, None)
+        sess = _sessions.pop(token, None)
+        if sess and sess.get("login_log_id"):
+            db.mark_logout(sess["login_log_id"])
     # Cookie'yi sil (expires geçmişe)
     writer.write(
         b"HTTP/1.1 302 Found\r\n"
@@ -376,7 +387,13 @@ async def _handle_client(reader, writer):
         elif method == "GET" and path == "/api/transactions":
             if await _require_auth(headers, writer):
                 return
-            await _serve_transactions(writer)
+            raw_qs = parts[1].split("?", 1)[1] if "?" in parts[1] else ""
+            cp_filter = ""
+            for param in raw_qs.split("&"):
+                if param.startswith("cp_id="):
+                    cp_filter = param[6:]
+                    break
+            await _serve_transactions(writer, cp_id_filter=cp_filter)
 
         elif method == "GET" and path == "/api/me":
             if await _require_auth(headers, writer):

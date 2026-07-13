@@ -8,7 +8,7 @@ real-time web dashboard. Python asyncio backend (no framework) — vanilla HTML/
 
 - **OCPP 1.6J WebSocket server** — BootNotification, Heartbeat, StatusNotification, Authorize,
   StartTransaction, StopTransaction, MeterValues (CP→Server); RemoteStartTransaction (requires
-  idTag), RemoteStopTransaction, Reset (Hard/Soft) (Server→CP)
+  idTag), RemoteStopTransaction, Reset (Hard/Soft), TriggerMessage (Server→CP)
 - **Spec-compliant validation** — invalid `StatusNotification.status`/`errorCode` and
   `StopTransaction.reason` values are rejected with a proper `PropertyConstraintViolation`
   CallError instead of being silently accepted; unexpected handler errors return an
@@ -25,7 +25,7 @@ real-time web dashboard. Python asyncio backend (no framework) — vanilla HTML/
 - **SQLite persistence** — transactions, login history and managed user accounts survive
   restarts (live charger/connector state does not — chargers simply re-register on reconnect)
 - **Per-CP message log** — independent 200-entry ring buffer per charge point, expandable
-  JSON payloads (MeterValues excluded to reduce noise)
+  JSON payloads (includes MeterValues)
 - **Status filters** — filter stations by Available / Charging / Faulted / Offline
 - **PowerLoss handling** — open transactions auto-close with `reason: PowerLoss` if a charger
   disconnects mid-session
@@ -98,9 +98,9 @@ On `Reset` the simulated CP disconnects and reconnects automatically after 3s.
 | Page | Access | Description |
 |------|--------|-------------|
 | Overview (*Genel Bakış*) | all | Status overview, clickable stat filters, live energy chart, connector-status donut chart, recent transactions |
-| Stations (*İstasyonlar*) | all | CP cards with status filter chips; Start (prompts for idTag) / Stop / Reset / view-log per CP; live kWh, power, SoC%, and session-duration badges |
+| Stations (*İstasyonlar*) | all | CP cards with status filter chips; Start (prompts for idTag) / Stop / Reset / Trigger Message / view-log per CP; live kWh, power, SoC%, and session-duration badges |
 | Transactions (*İşlemler*) | all | Full transaction history with energy totals and stop reason |
-| Message Log (*Mesaj Logu*) | all | Per-CP raw OCPP message log (MeterValues excluded), expandable payloads |
+| Message Log (*Mesaj Logu*) | all | Per-CP raw OCPP message log (includes MeterValues), expandable payloads |
 | Login Logs (*Giriş Logları*) | admin | Successful login history with username search |
 | Users (*Kullanıcılar*) | admin | Add / remove regular user accounts |
 

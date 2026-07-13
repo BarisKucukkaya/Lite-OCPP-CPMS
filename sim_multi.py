@@ -164,6 +164,51 @@ async def run_cp(cp_id):
             await asyncio.sleep(3)
             await ws.close()
 
+        elif action == "TriggerMessage":
+            requested = payload.get("requestedMessage")
+            connector_id = payload.get("connectorId", 1)
+            supported = {
+                "BootNotification", "Heartbeat", "StatusNotification",
+                "MeterValues", "DiagnosticsStatusNotification", "FirmwareStatusNotification",
+            }
+            if requested not in supported:
+                await ws.send(json.dumps([3, uid, {"status": "NotImplemented"}]))
+                return
+            await ws.send(json.dumps([3, uid, {"status": "Accepted"}]))
+            print("  [{}] <-- TriggerMessage({}) → Accepted".format(cp_id, requested))
+
+            if requested == "Heartbeat":
+                await send_call(ws, "Heartbeat", {})
+            elif requested == "BootNotification":
+                await send_call(ws, "BootNotification", {
+                    "chargePointVendor": "Vestel", "chargePointModel": "VE7000",
+                    "chargePointSerialNumber": "SN-{}".format(cp_id),
+                    "chargeBoxSerialNumber": "CB-{}".format(cp_id),
+                    "firmwareVersion": "1.2.0", "meterType": "AC",
+                })
+            elif requested == "StatusNotification":
+                status = "Charging" if connector_id in sessions else "Available"
+                await send_status(ws, connector_id, status)
+            elif requested == "MeterValues":
+                session = sessions.get(connector_id)
+                if session is None:
+                    print("  [{}] TriggerMessage(MeterValues): aktif session yok, atlanıyor".format(cp_id))
+                    return
+                kwh = round(session.get("meter_wh", 0) / 1000.0, 4)
+                await send_call(ws, "MeterValues", {
+                    "connectorId": connector_id,
+                    "transactionId": session.get("transaction_id"),
+                    "meterValue": [{
+                        "timestamp": _now(),
+                        "sampledValue": [{
+                            "value": str(kwh), "measurand": "Energy.Active.Import.Register",
+                            "unit": "kWh", "context": "Trigger", "format": "Raw", "location": "Outlet",
+                        }],
+                    }],
+                })
+            else:  # DiagnosticsStatusNotification / FirmwareStatusNotification
+                await send_call(ws, requested, {"status": "Idle"})
+
         else:
             await ws.send(json.dumps([4, uid, "NotImplemented",
                                       "Action '{}' not supported".format(action), {}]))

@@ -60,6 +60,10 @@ def init():
         );
     """)
     conn.commit()
+    cols = [row["name"] for row in conn.execute("PRAGMA table_info(login_log)").fetchall()]
+    if "logout_time" not in cols:
+        conn.execute("ALTER TABLE login_log ADD COLUMN logout_time TEXT")
+        conn.commit()
     conn.close()
     print("  DB              : {}".format(_DB_PATH))
 
@@ -116,13 +120,23 @@ def upsert_transaction(tid: int, data: dict):
 
 
 def log_login(username: str, ip: str, success: bool):
-    """Bir giriş denemesini logla."""
+    """Bir giriş denemesini logla. Eklenen satırın id'sini döndürür."""
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn = _connect()
-    conn.execute(
+    cur = conn.execute(
         "INSERT INTO login_log (username, ip, login_time, success) VALUES (?, ?, ?, ?)",
         (username, ip, now, 1 if success else 0),
     )
+    conn.commit()
+    conn.close()
+    return cur.lastrowid
+
+
+def mark_logout(login_log_id: int):
+    """Bir giriş kaydına çıkış zamanını işler."""
+    now = datetime.datetime.utcnow().isoformat() + "Z"
+    conn = _connect()
+    conn.execute("UPDATE login_log SET logout_time = ? WHERE id = ?", (now, login_log_id))
     conn.commit()
     conn.close()
 
@@ -222,13 +236,13 @@ def get_login_log(limit: int = 200, username_filter: str = ""):
     conn = _connect()
     if username_filter:
         rows = conn.execute(
-            "SELECT username, ip, login_time FROM login_log "
+            "SELECT username, ip, login_time, logout_time FROM login_log "
             "WHERE success = 1 AND username LIKE ? ORDER BY id DESC LIMIT ?",
             ("%" + username_filter + "%", limit),
         ).fetchall()
     else:
         rows = conn.execute(
-            "SELECT username, ip, login_time FROM login_log "
+            "SELECT username, ip, login_time, logout_time FROM login_log "
             "WHERE success = 1 ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()

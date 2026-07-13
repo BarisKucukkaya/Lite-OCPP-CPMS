@@ -11,11 +11,14 @@ Handled messages (CP -> Server):
   StartTransaction      -> idTagInfo Accepted + transactionId
   StopTransaction       -> idTagInfo Accepted
   MeterValues           -> {}
+  DiagnosticsStatusNotification -> {}
+  FirmwareStatusNotification    -> {}
 
 Server-initiated messages (Server -> CP):
   RemoteStartTransaction  -> {status: Accepted/Rejected}
   RemoteStopTransaction   -> {status: Accepted/Rejected}
   Reset                   -> {status: Accepted/Rejected}
+  TriggerMessage          -> {status: Accepted/Rejected/NotImplemented}
 """
 import asyncio
 import json
@@ -66,6 +69,10 @@ VALID_STOP_REASONS = {
     "PowerLoss", "Reboot", "Remote", "SoftReset", "UnlockCommand", "DeAuthorized",
 }
 VALID_RESET_TYPES = {"Hard", "Soft"}
+VALID_MESSAGE_TRIGGERS = {
+    "BootNotification", "DiagnosticsStatusNotification",
+    "FirmwareStatusNotification", "Heartbeat", "MeterValues", "StatusNotification",
+}
 SOC_AUTO_STOP_THRESHOLD = 100
 
 
@@ -291,6 +298,14 @@ def _process_meter_value_list(cp_id: str, connector_id: str, conn: dict,
                     pass
 
 
+def _handle_diagnostics_status_notification(cp_id: str, payload: dict) -> dict:
+    return {}
+
+
+def _handle_firmware_status_notification(cp_id: str, payload: dict) -> dict:
+    return {}
+
+
 def _handle_meter_values(cp_id: str, payload: dict) -> dict:
     connector_id = str(payload.get("connectorId", 1))
     tid = payload.get("transactionId")
@@ -342,6 +357,10 @@ async def _process_cp_call(cp_id: str, uid: str, action: str, payload: dict) -> 
             resp = _handle_stop_transaction(cp_id, payload)
         elif action == "MeterValues":
             resp = _handle_meter_values(cp_id, payload)
+        elif action == "DiagnosticsStatusNotification":
+            resp = _handle_diagnostics_status_notification(cp_id, payload)
+        elif action == "FirmwareStatusNotification":
+            resp = _handle_firmware_status_notification(cp_id, payload)
         else:
             state.broadcast({"type": "log", "ts": _now(), "cp_id": cp_id,
                 "direction": "IN", "action": action, "unique_id": uid, "payload": payload})
@@ -495,6 +514,13 @@ async def remote_action(cp_id: str, action: str, connector_id: int = 1, extra: d
         if reset_type not in VALID_RESET_TYPES:
             raise Exception("Invalid reset type: '{}' (must be Hard or Soft)".format(reset_type))
         payload = {"type": reset_type}
+    elif action == "TriggerMessage":
+        requested_message = (extra or {}).get("requested_message")
+        if requested_message not in VALID_MESSAGE_TRIGGERS:
+            raise Exception("Invalid requested_message: '{}'".format(requested_message))
+        payload = {"requestedMessage": requested_message}
+        if requested_message in ("StatusNotification", "MeterValues"):
+            payload["connectorId"] = connector_id
     else:
         raise Exception("Unknown action: {}".format(action))
 
