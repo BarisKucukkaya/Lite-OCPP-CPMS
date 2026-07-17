@@ -8,14 +8,14 @@
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
   <style>
     :root {
-      --bg:       #111111;   /* siyah panel */
-      --sidebar:  #0a0a0a;   /* daha koyu siyah */
-      --card:     #1a1a1a;   /* kart yüzeyi */
+      --bg:       #111111;   /* black panel */
+      --sidebar:  #0a0a0a;   /* darker black */
+      --card:     #1a1a1a;   /* card surface */
       --card2:    #212121;
       --border:   rgba(255,255,255,.07);
-      --accent:   #e61e14;   /* Vestel kırmızı */
-      --accent-d: #b81510;   /* koyu kırmızı */
-      --blue:     #38b6ff;   /* şarj LED halkası mavisi */
+      --accent:   #e61e14;   /* Vestel red */
+      --accent-d: #b81510;   /* dark red */
+      --blue:     #38b6ff;   /* charging LED ring blue */
       --green:    #22c55e;
       --yellow:   #f59e0b;
       --red:      #ef4444;
@@ -442,7 +442,7 @@
     }
     #log-action-filter:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* ── Combobox (yazarak + kaydırarak arama) ──────────────────── */
+    /* ── Combobox (search by typing or scrolling) ─────────────────── */
     .combo-wrap { position: relative; }
     .combo-dropdown {
       display: none; position: absolute; top: 100%; left: 0; right: 0;
@@ -459,7 +459,7 @@
     ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: #4a5568; }
 
-    /* ── Toast bildirimleri ──────────────────────────────────── */
+    /* ── Toast notifications ───────────────────────────────────── */
     #toast-container {
       position: fixed; bottom: 24px; right: 24px;
       display: flex; flex-direction: column-reverse; gap: 8px;
@@ -481,7 +481,7 @@
     @keyframes toast-in  { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: none; } }
     @keyframes toast-out { to   { opacity:0; transform: translateX(20px); } }
 
-    /* ── Özel modal (native prompt/confirm/alert bazı ortamlarda desteklenmiyor) ── */
+    /* ── Custom modal (native prompt/confirm/alert isn't supported in some environments) ── */
     #modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,.6);
       display: none; align-items: center; justify-content: center;
@@ -511,7 +511,7 @@
     }
     .modal-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-    /* ── Çıkış butonu ────────────────────────────────────────── */
+    /* ── Logout button ──────────────────────────────────────────── */
     .btn-logout {
       margin-top: 8px;
       width: 100%;
@@ -527,7 +527,7 @@
     }
     .btn-logout:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* ── Giriş logu tablosu ──────────────────────────────────── */
+    /* ── Login log table ─────────────────────────────────────────── */
     .badge-ok   { color: var(--green);  font-weight: 700; }
     .badge-fail { color: var(--red);    font-weight: 700; }
   </style>
@@ -600,7 +600,7 @@
 
     <main id="content">
 
-      <!-- ── Genel Bakış ─────────────────────────────────────── -->
+      <!-- ── Overview ─────────────────────────────────────────── -->
       <section class="page active" id="page-overview">
         <div class="stat-row">
           <div class="stat-card s-available" onclick="filterByStatus('available')">
@@ -647,7 +647,7 @@
         </div>
       </section>
 
-      <!-- ── İstasyonlar ─────────────────────────────────────── -->
+      <!-- ── Stations ─────────────────────────────────────────── -->
       <section class="page" id="page-stations">
         <div id="station-filter-bar" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px;">
           <button class="filter-chip active" data-status="all" onclick="filterByStatus(null)">Tümü</button>
@@ -661,7 +661,7 @@
         </div>
       </section>
 
-      <!-- ── İşlemler ────────────────────────────────────────── -->
+      <!-- ── Transactions ─────────────────────────────────────── -->
       <section class="page" id="page-txns">
         <div class="card">
           <div class="card-hdr">
@@ -686,7 +686,7 @@
         </div>
       </section>
 
-      <!-- ── Mesaj Logu ───────────────────────────────────────── -->
+      <!-- ── Message Log ──────────────────────────────────────── -->
       <section class="page" id="page-logs">
         <div class="card">
           <div class="card-hdr">
@@ -724,7 +724,7 @@
         </div>
       </section>
 
-      <!-- ── Giriş Logları ──────────────────────────────────────── -->
+      <!-- ── Login Logs ───────────────────────────────────────────── -->
       <section class="page" id="page-loginlog">
         <div class="card">
           <div class="card-hdr">
@@ -752,7 +752,7 @@
         </div>
       </section>
 
-      <!-- ── Kullanıcı Yönetimi ─────────────────────────────────── -->
+      <!-- ── User Management ──────────────────────────────────────── -->
       <section class="page" id="page-users">
         <div class="card" style="margin-bottom:16px;">
           <div class="card-hdr">Yeni Kullanıcı Ekle</div>
@@ -790,7 +790,7 @@
         </div>
       </section>
 
-      <!-- ── RFID Kartları ──────────────────────────────────────── -->
+      <!-- ── RFID Cards ───────────────────────────────────────────── -->
       <section class="page" id="page-cards">
         <div class="card" style="margin-bottom:16px;">
           <div class="card-hdr">Yeni Kart Ekle</div>
@@ -859,14 +859,14 @@
     var _barLabels     = [];
     var _barDataArr    = [];
     var _chartsInit    = false;
-    var _knownCps      = {};   // {cp_id: true} — bağlantı toast kontrolü
-    var _myRole        = 'user';  // /api/me'den gelir
-    var _offlineCps    = {};   // {cp_id: true} — offline istasyonlar
-    var _countedTxnIds = {};   // {tid: true} — çift sayım önleme
+    var _knownCps      = {};   // {cp_id: true} — connect/disconnect toast tracking
+    var _myRole        = 'user';  // comes from /api/me
+    var _offlineCps    = {};   // {cp_id: true} — offline stations
+    var _countedTxnIds = {};   // {tid: true} — avoid double-counting
     var _statusFilter  = null; // 'available'|'charging'|'faulted'|'offline'|null
-    var _lastIdTagByCp = {};   // {cp_id: idTag} — son yetkilendiren kart, Başlat'ta yeniden sormamak için
+    var _lastIdTagByCp = {};   // {cp_id: idTag} — last card used to authorize, so Start doesn't re-prompt
 
-    // ── Toast bildirimleri ────────────────────────────────────
+    // ── Toast notifications ───────────────────────────────────
     function showToast(msg, color) {
       var el = document.createElement('div');
       el.className = 'toast';
@@ -876,8 +876,8 @@
       setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 5100);
     }
 
-    // ── Özel modal (window.prompt/confirm/alert bazı gömülü tarayıcılarda
-    //    desteklenmiyor ve throw ediyor — kendi diyaloğumuzu kullanıyoruz) ──
+    // ── Custom modal (window.prompt/confirm/alert aren't supported and throw
+    //    in some embedded browsers — we use our own dialog instead) ──
     function _showModal(message, opts) {
       opts = opts || {};
       return new Promise(function(resolve) {
@@ -952,7 +952,7 @@
         .finally(function() { window.location.href = '/login'; });
     }
 
-    // ── Rol yönetimi ──────────────────────────────────────────
+    // ── Role management ───────────────────────────────────────
     function _applyRoleUI() {
       var adminItems = document.querySelectorAll('.nav-admin-only');
       adminItems.forEach(function(el) {
@@ -960,7 +960,7 @@
       });
     }
 
-    // ── Kullanıcı yönetimi ────────────────────────────────────
+    // ── User management ───────────────────────────────────────
     var _allUsers = [];
 
     function showUsers() {
@@ -1040,7 +1040,7 @@
       });
     }
 
-    // ── RFID kart yönetimi ────────────────────────────────────
+    // ── RFID card management ──────────────────────────────────
     var _allCards = [];
 
     function showCards() {
@@ -1120,7 +1120,7 @@
       });
     }
 
-    // ── Giriş logları ─────────────────────────────────────────
+    // ── Login logs ────────────────────────────────────────────
     function fmtDateHM(iso) {
       if (!iso) return null;
       var d = new Date(iso);
@@ -1292,14 +1292,14 @@
         else                                   matches = !isOffline && ACTIVE.indexOf(s) === -1 && s !== 'Faulted';
         card.style.display = matches ? '' : 'none';
       });
-      // Stat card seçili görünümü
+      // Stat card selected state
       document.querySelectorAll('.stat-card').forEach(function(c) { c.classList.remove('selected'); });
       var scMap = {available:'s-available', charging:'s-charging', faulted:'s-faulted', offline:'s-offline'};
       if (_statusFilter && scMap[_statusFilter]) {
         var sc = document.querySelector('.stat-card.' + scMap[_statusFilter]);
         if (sc) sc.classList.add('selected');
       }
-      // Station chip aktif durumu
+      // Station chip active state
       document.querySelectorAll('#station-filter-bar .filter-chip').forEach(function(c) {
         var ds = c.dataset.status;
         c.classList.toggle('active', _statusFilter === null ? ds === 'all' : ds === _statusFilter);
@@ -1822,7 +1822,7 @@
       ovBody.prepend(tr2);
       while (ovBody.children.length > 5) ovBody.removeChild(ovBody.lastChild);
 
-      // Update bar chart (overview bar chart — reuse line chart for now, bar is separate)
+      // Push this transaction's energy total into the rolling bar-chart data
       _barLabels.push('#' + cells.tid);
       _barDataArr.push(parseFloat(cells.kwh));
       if (_barLabels.length > 10) { _barLabels.shift(); _barDataArr.shift(); }
@@ -1845,21 +1845,21 @@
         var ev; try { ev = JSON.parse(e.data); } catch(x){ return; }
         if (ev.type === 'log') {
           addLogRow(ev);
-          // Şarj başlatma onayı toast
+          // Charging-start confirmation toast
           if (ev.action === 'RemoteStartTransactionResponse' && ev.payload && ev.payload.status === 'Accepted') {
             showToast('⚡ ' + ev.cp_id + ' şarj başlatıldı', 'var(--blue)');
           }
-          // SoC %100 → otomatik durdurma tetiklendi
+          // SoC reached 100% -> auto-stop triggered
           if (ev.action === 'AutoStopTriggered') {
             showToast('🔋 ' + ev.cp_id + ' %100 doldu — şarj otomatik durduruluyor', 'var(--yellow)');
           }
         } else if (ev.type === 'charger_update') {
-          // Yeni CP bağlantısı
+          // New CP connection
           if (!_knownCps[ev.cp_id]) {
             _knownCps[ev.cp_id] = true;
             showToast('🟢 ' + ev.cp_id + ' bağlandı', 'var(--green)');
           }
-          // Hata durumu kontrolü
+          // Fault-state check
           var prevC1 = _cpC1Status[ev.cp_id];
           var newC1  = ev.connectors && ev.connectors['1'] ? ev.connectors['1'].status : null;
           if (newC1 === 'Faulted' && prevC1 !== 'Faulted') {
@@ -1879,7 +1879,7 @@
       es.onerror = function() { pill.textContent = '● Bağlantı kesildi…'; pill.className = 'error'; };
     }
 
-    // Admin-only nav items başlangıçta gizle, /api/me sonra gösterir
+    // Hide admin-only nav items initially; /api/me reveals them if applicable
     _applyRoleUI();
     fetch('/api/me', { credentials: 'same-origin' })
       .then(function(r) {
@@ -1887,7 +1887,7 @@
         return r.json();
       })
       .then(function(me) { _myRole = me.role || 'user'; _applyRoleUI(); })
-      .catch(function(e) { console.warn('[CPMS] /api/me hatası:', e); });
+      .catch(function(e) { console.warn('[CPMS] /api/me error:', e); });
 
     connectSSE();
     initCharts();

@@ -20,13 +20,18 @@ real-time web dashboard. Python asyncio backend (no framework) — vanilla HTML/
   connect / disconnect / fault / transaction-complete / auto-stop events
 - **Live charts** — energy flow (line) and connector status distribution (donut)
 - **Authentication** — session-based login/logout (`HttpOnly` cookie, 8-hour TTL by default)
-- **Role-based access** — admin (full access incl. user management & login logs) vs. user
-  (stations, transactions, message log — can still Start/Stop/Reset)
-- **SQLite persistence** — transactions, login history and managed user accounts survive
-  restarts (live charger/connector state does not — chargers simply re-register on reconnect)
+- **Role-based access** — admin (full access incl. user management, RFID cards & login logs) vs.
+  user (stations, transactions, message log — can still Start/Stop/Reset)
+- **RFID card authorization** — `Authorize`/`StartTransaction`/`RemoteStartTransaction` are
+  rejected unless the idTag is a registered card; admin manages the card list from the dashboard
+  (or `GET/POST/DELETE /api/cards`)
+- **SQLite persistence** — transactions, login history (incl. logout time / session duration),
+  managed user accounts and RFID cards survive restarts (live charger/connector state does not —
+  chargers simply re-register on reconnect)
 - **Per-CP message log** — independent 200-entry ring buffer per charge point, expandable
-  JSON payloads (includes MeterValues)
-- **Status filters** — filter stations by Available / Charging / Faulted / Offline
+  JSON payloads (includes MeterValues); filterable by charge point and action type
+- **Status filters** — filter stations by Available / Charging / Faulted / Offline; transactions
+  and message log are separately filterable by charge point
 - **PowerLoss handling** — open transactions auto-close with `reason: PowerLoss` if a charger
   disconnects mid-session
 - **Multi-CP simulator** — simulate up to N charge points with auto-reconnect; optional `--soc`
@@ -52,11 +57,8 @@ pip3 install -r requirements.txt
 git clone <repo-url>
 cd lite-OCPP-CPMS
 
-# 2. Create config.py (gitignored — no template ships in the repo)
-cat > config.py <<'EOF'
-ADMIN_USERS = {"admin": "change-me"}
-SESSION_TTL = 8 * 3600  # session cookie lifetime, seconds
-EOF
+# 2. Create config.py from the template (config.py is gitignored)
+cp config.example.py config.py
 # Edit config.py and set a real admin password before running
 
 # 3. Start the server
@@ -64,6 +66,11 @@ python3 main.py
 ```
 
 Open the dashboard: **http://localhost:8000** (log in with the admin credentials from `config.py`)
+
+Before you can start a charging session (from the dashboard or the simulator), register at least one
+RFID card: log in as admin, go to **RFID Cards**, and add an idTag (the simulator uses `SIM001`).
+`Authorize` / `StartTransaction` / `RemoteStartTransaction` are rejected for any idTag not in that
+list.
 
 ## Usage
 
@@ -88,10 +95,11 @@ python3 sim_multi.py localhost 1 --soc
 
 Each simulated CP boots, sends StatusNotification, and waits for a `RemoteStartTransaction` — the
 dashboard's Start button prompts for an `idTag` before sending one (required by the OCPP 1.6
-schema). On start it cycles `Preparing → Charging`, sends `StartTransaction`, and reports
-`MeterValues` every 5s (energy + power, plus a climbing SoC sample with `--soc`). Once SoC
-reaches 100%, the server automatically issues `RemoteStopTransaction` — no manual action needed.
-On `Reset` the simulated CP disconnects and reconnects automatically after 3s.
+schema, and rejected unless that idTag is a registered RFID card — see Setup). On start it cycles
+`Preparing → Charging`, sends `StartTransaction` with `idTag: "SIM001"`, and reports `MeterValues`
+every 5s (energy + power, plus a climbing SoC sample with `--soc`). Once SoC reaches 100%, the
+server automatically issues `RemoteStopTransaction` — no manual action needed. On `Reset` the
+simulated CP disconnects and reconnects automatically after 3s.
 
 ### Dashboard pages
 
@@ -99,10 +107,11 @@ On `Reset` the simulated CP disconnects and reconnects automatically after 3s.
 |------|--------|-------------|
 | Overview (*Genel Bakış*) | all | Status overview, clickable stat filters, live energy chart, connector-status donut chart, recent transactions |
 | Stations (*İstasyonlar*) | all | CP cards with status filter chips; Start (prompts for idTag) / Stop / Reset / Trigger Message / view-log per CP; live kWh, power, SoC%, and session-duration badges |
-| Transactions (*İşlemler*) | all | Full transaction history with energy totals and stop reason |
-| Message Log (*Mesaj Logu*) | all | Per-CP raw OCPP message log (includes MeterValues), expandable payloads |
-| Login Logs (*Giriş Logları*) | admin | Successful login history with username search |
+| Transactions (*İşlemler*) | all | Full transaction history with energy totals and stop reason; filterable by charge point |
+| Message Log (*Mesaj Logu*) | all | Per-CP raw OCPP message log (includes MeterValues), expandable payloads; filterable by charge point and action type |
+| Login Logs (*Giriş Logları*) | admin | Successful login history with username search; shows logout time / session duration |
 | Users (*Kullanıcılar*) | admin | Add / remove regular user accounts |
+| RFID Cards (*RFID Kartları*) | admin | Add / remove authorized idTags; required before any charging session can start |
 
 ## Architecture
 
@@ -111,15 +120,15 @@ main.py
 ├── ocpp_server.py  (ws://0.0.0.0:9000/ocpp/<CP_ID>) — OCPP 1.6J handling, transactions, SoC auto-stop
 ├── http_server.py  (http://0.0.0.0:8000)            — hand-rolled async HTTP + SSE, no framework
 ├── state.py        ← shared in-memory bus (no locks, single event loop)
-├── db.py           ← SQLite (cpms.db) — transactions, login_log, users
+├── db.py           ← SQLite (cpms.db) — transactions, login_log, users, rfid_cards
 ├── sim_multi.py    ← multi-CP OCPP simulator for testing
-└── config.py       ← gitignored, no template — admin credentials & session TTL (see Setup)
+└── config.py       ← gitignored, copy from config.example.py — admin credentials & session TTL
 ```
 
 `state.py` is the shared memory bus. Both servers read/write it directly inside the same asyncio
 event loop, so no locks are needed (cooperative multitasking). Live charger/connector state lives
-only in memory; transaction history, login log and user accounts persist to SQLite (`cpms.db`,
-gitignored) and survive a restart.
+only in memory; transaction history, login log, user accounts and RFID cards persist to SQLite
+(`cpms.db`, gitignored) and survive a restart.
 
 `ocpp_server.py` also writes a persistent connection log to `ocpp_server.log` (gitignored) next to
 the script — every TCP connection, HTTP handshake request/failure, and charger connect/disconnect
@@ -128,8 +137,8 @@ diagnosing a charge point that fails before completing the WebSocket handshake.
 
 ## Security notes
 
-- `config.py` is gitignored with no committed template — create it yourself (see Setup) and
-  never commit real credentials
+- `config.py` is gitignored — copy it from `config.example.py` (see Setup) and never commit real
+  credentials
 - Passwords (both `config.py` admins and SQLite `users`) are stored in plain text — suitable for
   internal/lab use only; add hashing (e.g. bcrypt) before any public deployment
 - Sessions use `HttpOnly; SameSite=Lax` cookies with a configurable TTL (`config.SESSION_TTL`)

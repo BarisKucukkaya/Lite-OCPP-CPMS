@@ -1,14 +1,14 @@
 """
 OCPP 1.6J Multi-CP Simulator
 
-Her CP için bağımsız asyncio task çalıştırır. Tüm state (pending, active_sessions)
-fonksiyon-lokal değişkenlerde tutulur — paylaşım yok.
+Runs an independent asyncio task per CP. All state (pending, active_sessions)
+is kept in function-local variables — no sharing across CPs.
 
-Kullanım:
+Usage:
     python3 sim_multi.py                       # localhost, 10 CP (CP001-CP010)
-    python3 sim_multi.py 192.168.1.10          # özel sunucu IP
+    python3 sim_multi.py 192.168.1.10          # custom server IP
     python3 sim_multi.py localhost 5           # 5 CP (CP001-CP005)
-    python3 sim_multi.py localhost 10 1        # 10 CP, CP001'den başla
+    python3 sim_multi.py localhost 10 1        # 10 CP, starting from CP001
 """
 import asyncio
 import json
@@ -26,7 +26,7 @@ START = int(_args[2]) if len(_args) > 2 else 1
 
 PORT               = 9000
 HEARTBEAT_INTERVAL = 20
-SOC_RAMP_SECONDS    = 300  # --soc ile %0'dan %100'e çıkış süresi (~5 dakika)
+SOC_RAMP_SECONDS    = 300  # time to climb 0% -> 100% with --soc (~5 minutes)
 
 
 def _now():
@@ -34,7 +34,7 @@ def _now():
 
 
 async def run_cp(cp_id):
-    """Tek bir şarj noktasını simüle eder. Bağlantı kopunca yeniden bağlanır."""
+    """Simulate a single charge point. Reconnects automatically on disconnect."""
     url     = "ws://{}:{}/ocpp/{}".format(HOST, PORT, cp_id)
     pending = {}          # uid → Future
     sessions = {}         # connector_id → {meter_wh, transaction_id, task}
@@ -160,7 +160,7 @@ async def run_cp(cp_id):
         elif action == "Reset":
             reset_type = payload.get("type", "Hard")
             await ws.send(json.dumps([3, uid, {"status": "Accepted"}]))
-            print("  [{}] <-- Reset ({}) → yeniden bağlanıyor...".format(cp_id, reset_type))
+            print("  [{}] <-- Reset ({}) -> reconnecting...".format(cp_id, reset_type))
             await asyncio.sleep(3)
             await ws.close()
 
@@ -192,7 +192,7 @@ async def run_cp(cp_id):
             elif requested == "MeterValues":
                 session = sessions.get(connector_id)
                 if session is None:
-                    print("  [{}] TriggerMessage(MeterValues): aktif session yok, atlanıyor".format(cp_id))
+                    print("  [{}] TriggerMessage(MeterValues): no active session, skipping".format(cp_id))
                     return
                 kwh = round(session.get("meter_wh", 0) / 1000.0, 4)
                 await send_call(ws, "MeterValues", {
@@ -236,10 +236,10 @@ async def run_cp(cp_id):
             await asyncio.sleep(HEARTBEAT_INTERVAL)
             await send_call(ws, "Heartbeat", {})
 
-    # Bağlantı döngüsü — kesilince yeniden bağlanır
+    # Connection loop — reconnects automatically on disconnect
     while True:
         try:
-            print("[SIM] {} bağlanıyor...".format(cp_id))
+            print("[SIM] {} connecting...".format(cp_id))
             async with websockets.connect(url, subprotocols=["ocpp1.6"]) as ws:
                 recv_task = asyncio.ensure_future(receiver(ws))
                 try:
@@ -253,7 +253,7 @@ async def run_cp(cp_id):
                     })
                     await send_status(ws, 0, "Available")
                     await send_status(ws, 1, "Available")
-                    print("[SIM] {} hazır.\n".format(cp_id))
+                    print("[SIM] {} ready.\n".format(cp_id))
                     await heartbeat_loop(ws)
                 finally:
                     recv_task.cancel()
@@ -264,19 +264,19 @@ async def run_cp(cp_id):
                     sessions.clear()
                     pending.clear()
         except Exception as e:
-            print("[SIM] {} hata: {} — 5s sonra yeniden deneniyor...".format(cp_id, e))
+            print("[SIM] {} error: {} — retrying in 5s...".format(cp_id, e))
             await asyncio.sleep(5)
 
 
 async def main():
     cp_ids = ["CP{:03d}".format(START + i) for i in range(COUNT)]
-    print("[SIM] {} istasyon başlatılıyor: {} → {}".format(COUNT, cp_ids[0], cp_ids[-1]))
-    print("[SIM] Sunucu: {}:{}\n".format(HOST, PORT))
+    print("[SIM] Starting {} station(s): {} -> {}".format(COUNT, cp_ids[0], cp_ids[-1]))
+    print("[SIM] Server: {}:{}\n".format(HOST, PORT))
 
     tasks = []
     for i, cp_id in enumerate(cp_ids):
         tasks.append(asyncio.ensure_future(run_cp(cp_id)))
-        # Kademeli bağlantı — sunucuyu ezmemek için
+        # Staggered connections — avoid hammering the server all at once
         await asyncio.sleep(0.4)
 
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -287,4 +287,4 @@ if __name__ == "__main__":
     try:
         loop.run_until_complete(main())
     except KeyboardInterrupt:
-        print("\n[SIM] Durduruldu.")
+        print("\n[SIM] Stopped.")

@@ -1,13 +1,14 @@
 """
-SQLite kalıcı depolama katmanı.
+SQLite persistence layer.
 
-Tablolar:
-  transactions — OCPP işlem kayıtları (sunucu yeniden başlasa kaybolmaz)
-  login_log    — giriş denemeleri (kullanıcı, IP, zaman, başarı)
-  users        — admin tarafından yönetilen normal kullanıcı hesapları
-  rfid_cards   — şarj için yetkili RFID kartları (idTag listesi)
+Tables:
+  transactions — OCPP transaction records (survive a server restart)
+  login_log    — login attempts (username, IP, timestamp, success)
+  users        — regular user accounts managed by an admin
+  rfid_cards   — RFID cards authorized to start a charging session (idTag list)
 
-Senkron sqlite3 çağrıları — tek asyncio event loop'ta milisaniye sürer, sorun yok.
+Synchronous sqlite3 calls — each takes milliseconds on the single asyncio
+event loop, which is fine.
 """
 import sqlite3
 import os
@@ -23,7 +24,7 @@ def _connect():
 
 
 def init():
-    """Tabloları yoksa oluştur. Startup'ta bir kez çağrılır."""
+    """Create tables if they don't exist. Called once at startup."""
     conn = _connect()
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS transactions (
@@ -70,8 +71,8 @@ def init():
 
 def load_transactions():
     """
-    Tüm transaction kayıtlarını SQLite'tan yükle.
-    Döndürür: {int tid: dict} — state.transactions formatında.
+    Load all transaction records from SQLite.
+    Returns: {int tid: dict} — in state.transactions format.
     """
     conn = _connect()
     rows = conn.execute("SELECT * FROM transactions ORDER BY transaction_id").fetchall()
@@ -90,12 +91,12 @@ def load_transactions():
             "energy_wh":    row["energy_wh"] or 0,
             "reason":       row["reason"],
         }
-    print("  Yüklenen işlem  : {}".format(len(result)))
+    print("  Loaded txns     : {}".format(len(result)))
     return result
 
 
 def upsert_transaction(tid: int, data: dict):
-    """Bir transaction kaydını ekle veya güncelle (INSERT OR REPLACE)."""
+    """Insert or update a transaction record (INSERT OR REPLACE)."""
     conn = _connect()
     conn.execute(
         """INSERT OR REPLACE INTO transactions
@@ -120,7 +121,7 @@ def upsert_transaction(tid: int, data: dict):
 
 
 def log_login(username: str, ip: str, success: bool):
-    """Bir giriş denemesini logla. Eklenen satırın id'sini döndürür."""
+    """Log a login attempt. Returns the id of the inserted row."""
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn = _connect()
     cur = conn.execute(
@@ -133,7 +134,7 @@ def log_login(username: str, ip: str, success: bool):
 
 
 def mark_logout(login_log_id: int):
-    """Bir giriş kaydına çıkış zamanını işler."""
+    """Record the logout time on a login entry."""
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn = _connect()
     conn.execute("UPDATE login_log SET logout_time = ? WHERE id = ?", (now, login_log_id))
@@ -142,7 +143,7 @@ def mark_logout(login_log_id: int):
 
 
 def find_user(username: str):
-    """SQLite users tablosunda kullanıcıyı bul. Bulunamazsa None döner."""
+    """Look up a user in the SQLite users table. Returns None if not found."""
     conn = _connect()
     row = conn.execute(
         "SELECT username, password FROM users WHERE username = ?", (username,)
@@ -152,7 +153,7 @@ def find_user(username: str):
 
 
 def get_users():
-    """Tüm normal kullanıcıları döndür (şifreler hariç)."""
+    """Return all regular users (excluding passwords)."""
     conn = _connect()
     rows = conn.execute(
         "SELECT username, created_at FROM users ORDER BY created_at DESC"
@@ -162,7 +163,7 @@ def get_users():
 
 
 def add_user(username: str, password: str) -> bool:
-    """Yeni normal kullanıcı ekle. Kullanıcı zaten varsa False döner."""
+    """Add a new regular user. Returns False if the user already exists."""
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn = _connect()
     try:
@@ -179,7 +180,7 @@ def add_user(username: str, password: str) -> bool:
 
 
 def delete_user(username: str):
-    """Normal kullanıcıyı sil."""
+    """Delete a regular user."""
     conn = _connect()
     conn.execute("DELETE FROM users WHERE username = ?", (username,))
     conn.commit()
@@ -187,7 +188,7 @@ def delete_user(username: str):
 
 
 def get_cards():
-    """Tüm yetkili RFID kartlarını döndür."""
+    """Return all authorized RFID cards."""
     conn = _connect()
     rows = conn.execute(
         "SELECT id_tag, label, created_at FROM rfid_cards ORDER BY created_at DESC"
@@ -197,7 +198,7 @@ def get_cards():
 
 
 def add_card(id_tag: str, label: str) -> bool:
-    """Yeni yetkili RFID kartı ekle. Kart zaten varsa False döner."""
+    """Add a new authorized RFID card. Returns False if it already exists."""
     now = datetime.datetime.utcnow().isoformat() + "Z"
     conn = _connect()
     try:
@@ -214,7 +215,7 @@ def add_card(id_tag: str, label: str) -> bool:
 
 
 def delete_card(id_tag: str):
-    """Yetkili RFID kartını sil."""
+    """Delete an authorized RFID card."""
     conn = _connect()
     conn.execute("DELETE FROM rfid_cards WHERE id_tag = ?", (id_tag,))
     conn.commit()
@@ -222,7 +223,7 @@ def delete_card(id_tag: str):
 
 
 def is_card_authorized(id_tag: str) -> bool:
-    """idTag rfid_cards tablosunda kayıtlı mı?"""
+    """Is this idTag registered in the rfid_cards table?"""
     conn = _connect()
     row = conn.execute(
         "SELECT 1 FROM rfid_cards WHERE id_tag = ?", (id_tag,)
@@ -232,7 +233,7 @@ def is_card_authorized(id_tag: str) -> bool:
 
 
 def get_login_log(limit: int = 200, username_filter: str = ""):
-    """Başarılı giriş kayıtlarını döndür (en yeni önce). username_filter ile LIKE araması yapılır."""
+    """Return successful login records (newest first). username_filter does a LIKE search."""
     conn = _connect()
     if username_filter:
         rows = conn.execute(

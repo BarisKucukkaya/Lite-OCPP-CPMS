@@ -327,7 +327,6 @@ def _handle_meter_values(cp_id: str, payload: dict) -> dict:
 
 # Pending server-initiated calls: {uid: asyncio.Future}
 _pending_calls = {}
-_pending_lock = asyncio.Lock() if False else None  # plain dict is fine, same loop
 
 
 async def _process_cp_call(cp_id: str, uid: str, action: str, payload: dict) -> str:

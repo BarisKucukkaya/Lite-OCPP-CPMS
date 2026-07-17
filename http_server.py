@@ -1,16 +1,16 @@
 """
 Async HTTP server for the dashboard (asyncio.start_server — zero extra deps).
 
-Endpoints (auth gerektirmeyenler):
+Endpoints (no auth required):
   GET  /login              -> static/login.html
   POST /api/login          -> {username, password} -> Set-Cookie session
-  POST /api/logout         -> cookie sil, 302 /login
+  POST /api/logout         -> clear cookie, 302 /login
 
-Endpoints (session cookie gerektirir):
+Endpoints (require a session cookie):
   GET  /                   -> static/index.html
   GET  /api/chargers       -> current charger state as JSON
   GET  /api/transactions   -> last 50 transactions as JSON (optional ?cp_id= filter)
-  GET  /api/login-log      -> giriş logları as JSON
+  GET  /api/login-log      -> login log entries as JSON
   GET  /events             -> SSE stream (text/event-stream)
   POST /api/action         -> send RemoteStart/Stop/Reset to a charge point
 """
@@ -37,11 +37,11 @@ _sessions = {}
 
 
 # ---------------------------------------------------------------------------
-# Session yönetimi
+# Session management
 # ---------------------------------------------------------------------------
 
 def _parse_session_token(headers: dict):
-    """Cookie header'ından 'session' değerini çıkar."""
+    """Extract the 'session' value from the Cookie header."""
     cookie = headers.get("cookie", "")
     for part in cookie.split(";"):
         k, _, v = part.strip().partition("=")
@@ -51,7 +51,7 @@ def _parse_session_token(headers: dict):
 
 
 def _get_session(headers: dict):
-    """Geçerli session varsa döndür, yoksa None."""
+    """Return the session if valid, else None."""
     token = _parse_session_token(headers)
     if not token:
         return None
@@ -62,7 +62,7 @@ def _get_session(headers: dict):
     if age > config.SESSION_TTL:
         _sessions.pop(token, None)
         return None
-    # Geriye dönük uyumluluk: eski session'larda role yoksa türet
+    # Backward compatibility: derive role for sessions created before it existed
     if "role" not in sess:
         sess["role"] = "admin" if sess.get("username") in config.ADMIN_USERS else "user"
     return sess
@@ -70,9 +70,9 @@ def _get_session(headers: dict):
 
 async def _require_auth(headers: dict, writer) -> bool:
     """
-    Auth kontrolü yapar.
-    Oturum geçerliyse False döner (devam et).
-    Geçersizse 302 /login yazar ve True döner (işlemi durdur).
+    Check authentication.
+    Returns False if the session is valid (continue).
+    Writes a 302 /login and returns True if invalid (stop handling).
     """
     if _get_session(headers) is not None:
         return False
@@ -89,9 +89,9 @@ async def _require_auth(headers: dict, writer) -> bool:
 
 async def _require_admin(headers: dict, writer) -> bool:
     """
-    Admin yetkisi gerektirir.
-    Oturum yoksa 302 /login, yetersiz rol varsa 403 döner.
-    True → işlemi durdur.  False → devam et.
+    Require admin privileges.
+    No session -> 302 /login. Insufficient role -> 403.
+    True -> stop handling.  False -> continue.
     """
     sess = _get_session(headers)
     if sess is None:
@@ -276,7 +276,7 @@ async def _handle_login(writer, body_bytes: bytes, ip: str):
     username = data.get("username", "")
     password = data.get("password", "")
 
-    # Rol tespiti: önce config admins, sonra SQLite users
+    # Role lookup: check config admins first, then SQLite users
     role = None
     if config.ADMIN_USERS.get(username) == password:
         role = "admin"
@@ -318,7 +318,7 @@ async def _handle_logout(writer, headers: dict):
         sess = _sessions.pop(token, None)
         if sess and sess.get("login_log_id"):
             db.mark_logout(sess["login_log_id"])
-    # Cookie'yi sil (expires geçmişe)
+    # Clear the cookie (expire in the past)
     writer.write(
         b"HTTP/1.1 302 Found\r\n"
         b"Location: /login\r\n"
@@ -358,7 +358,7 @@ async def _handle_client(reader, writer):
             writer.write(b"HTTP/1.1 204 No Content\r\n" + _CORS_HEADERS + b"\r\n")
             await writer.drain()
 
-        # ── Auth gerektirmeyen route'lar ────────────────────────────
+        # ── Routes that don't require auth ──────────────────────────
         elif method == "GET" and path == "/login":
             await _serve_static(writer, "login.html")
 
@@ -367,13 +367,13 @@ async def _handle_client(reader, writer):
             body = await asyncio.wait_for(reader.read(length), timeout=10)
             ip = _get_client_ip(headers)
             await _handle_login(writer, body, ip)
-            return  # _handle_login kendi response'unu yazar
+            return  # _handle_login writes its own response
 
         elif method == "POST" and path == "/api/logout":
             await _handle_logout(writer, headers)
             return
 
-        # ── Korumalı route'lar ───────────────────────────────────────
+        # ── Protected routes ─────────────────────────────────────────
         elif method == "GET" and path in ("/", "/index.html"):
             if await _require_auth(headers, writer):
                 return

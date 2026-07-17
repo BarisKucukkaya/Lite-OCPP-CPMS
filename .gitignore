@@ -3,3 +3,6 @@ __pycache__/
 cpms.db
 config.py
 *.log
+.venv/
+venv/
+.env
